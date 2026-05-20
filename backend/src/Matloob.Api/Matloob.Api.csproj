@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Matloob.Domain\Matloob.Domain.csproj" />
+    <ProjectReference Include="..\Matloob.Contracts\Matloob.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

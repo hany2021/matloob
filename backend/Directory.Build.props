@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Repository-wide MSBuild defaults for every project under backend/.
+    Per-project csprojs only carry what is genuinely project-specific
+    (e.g. <ProjectReference>, <PackageReference> without Version, IsPackable).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
