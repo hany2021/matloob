@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <PackageReference Include="FastEndpoints" />
+    <PackageReference Include="FastEndpoints.Swagger" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Matloob.Domain\Matloob.Domain.csproj" />
     <ProjectReference Include="..\Matloob.Contracts\Matloob.Contracts.csproj" />
   </ItemGroup>

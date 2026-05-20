@@ -1,17 +1,40 @@
+using FastEndpoints;
+using FastEndpoints.Swagger;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// RFC 7807 ProblemDetails responses for all unhandled exceptions and status-code 4xx/5xx.
+builder.Services.AddProblemDetails();
 
 // Liveness + readiness probes. Real checks (DB, IdM JWKS, disk) are wired in
 // later commits as the corresponding dependencies are added.
 builder.Services.AddHealthChecks();
 
+// FastEndpoints + OpenAPI (FastEndpoints.Swagger wraps NSwag).
+builder.Services.AddFastEndpoints();
+builder.Services.SwaggerDocument();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    // .NET 10 enables this implicitly for minimal APIs in Development;
-    // declaring it here makes intent explicit and protects against future
-    // hosting-default churn.
     app.UseDeveloperExceptionPage();
+}
+
+// Translate non-success status codes (4xx) into ProblemDetails bodies.
+app.UseStatusCodePages();
+
+// Translate unhandled exceptions (5xx) into ProblemDetails bodies.
+app.UseExceptionHandler();
+
+// FastEndpoints wires routing + endpoint discovery from the assembly.
+app.UseFastEndpoints();
+
+if (app.Environment.IsDevelopment())
+{
+    // OpenAPI JSON at  /swagger/v1/swagger.json
+    // Swagger UI    at  /swagger
+    app.UseSwaggerGen();
 }
 
 // Liveness: "the process is up." No tag filter -> always reports Healthy

@@ -13,6 +13,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Web framework -->
+    <PackageVersion Include="FastEndpoints"                Version="8.1.0" />
+    <PackageVersion Include="FastEndpoints.Swagger"        Version="8.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack — pinned from the `dotnet new xunit` template (.NET 10 SDK 10.0.102) -->
     <PackageVersion Include="coverlet.collector"           Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk"       Version="17.14.1" />
