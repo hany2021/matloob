@@ -19,6 +19,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Authentication: JWT Bearer validation against NEC IdentityServer.
+         Wired in Program.cs in the next commit; this commit is package-only. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Structured logging (console sink only — external sinks come later) -->
     <PackageVersion Include="Serilog.AspNetCore"           Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console"        Version="6.1.1" />
