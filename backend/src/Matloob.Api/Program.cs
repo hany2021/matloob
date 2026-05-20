@@ -1,5 +1,6 @@
 using FastEndpoints;
 using FastEndpoints.Swagger;
+using Matloob.Api.Infrastructure.Persistence;
 using Serilog;
 
 // Bootstrap logger: captures errors thrown during host construction (before
@@ -38,6 +39,9 @@ try
     // FastEndpoints + OpenAPI (FastEndpoints.Swagger wraps NSwag).
     builder.Services.AddFastEndpoints();
     builder.Services.SwaggerDocument();
+
+    // EF Core + Npgsql + audit/soft-delete interceptors + current-user abstraction.
+    builder.Services.AddMatloobPersistence(builder.Configuration);
 
     var app = builder.Build();
 

@@ -10,7 +10,7 @@ namespace Matloob.Domain.Common;
 /// through behavior methods.
 /// </summary>
 /// <typeparam name="TId">The CLR type of the primary key (usually <see cref="Guid"/>).</typeparam>
-public abstract class BaseAuditableEntity<TId> : BaseEntity<TId>, ISoftDeletable
+public abstract class BaseAuditableEntity<TId> : BaseEntity<TId>, IAuditable, ISoftDeletable
     where TId : notnull
 {
     public DateTimeOffset CreatedAt { get; internal set; }
