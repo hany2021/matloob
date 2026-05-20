@@ -19,6 +19,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Structured logging (console sink only — external sinks come later) -->
+    <PackageVersion Include="Serilog.AspNetCore"           Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console"        Version="6.1.1" />
+    <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageVersion Include="Serilog.Enrichers.Process"    Version="3.0.0" />
+    <PackageVersion Include="Serilog.Enrichers.Thread"     Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack — pinned from the `dotnet new xunit` template (.NET 10 SDK 10.0.102) -->
     <PackageVersion Include="coverlet.collector"           Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk"       Version="17.14.1" />
