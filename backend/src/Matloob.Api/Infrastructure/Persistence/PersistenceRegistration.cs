@@ -37,6 +37,8 @@ public static class PersistenceRegistration
             options.UseNpgsql(connectionString, npgsql =>
             {
                 npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name);
+                // Keep migrations history table consistent with snake_case naming.
+                npgsql.MigrationsHistoryTable("__ef_migrations_history");
                 // Sensible retry policy for the readiness window after Postgres restarts.
                 npgsql.EnableRetryOnFailure(maxRetryCount: 3);
             });

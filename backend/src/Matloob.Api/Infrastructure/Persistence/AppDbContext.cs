@@ -1,3 +1,4 @@
+using Matloob.Domain.Auditing;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Infrastructure.Persistence;
@@ -16,6 +17,8 @@ public sealed class AppDbContext : DbContext
         : base(options)
     {
     }
+
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
