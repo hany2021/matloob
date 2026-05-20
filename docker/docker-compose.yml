@@ -1,0 +1,38 @@
+# Local-development Docker Compose for the Matloob backend.
+# Run from the repo root:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# This file is intentionally small. It will grow alongside the .NET API
+# (api service) and Angular admin (admin service) in later commits.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: matloob-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: matloob
+      POSTGRES_USER: matloob
+      POSTGRES_PASSWORD: matloob_dev_password
+      # Default-database collation / encoding. Saudi locale is not relevant
+      # at the database level; we keep UTF-8 + C.UTF-8 for predictable sort.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      # Host 54321 -> container 5432. Non-standard host port to avoid
+      # collision with any existing local Postgres on 5432.
+      - "54321:5432"
+    volumes:
+      - matloob_postgres_data:/var/lib/postgresql/data
+      # init.sql runs ONLY when the data volume is empty (first start).
+      # Subsequent restarts ignore it. To rerun: docker compose down -v.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matloob -d matloob"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  matloob_postgres_data:
+    name: matloob_postgres_data

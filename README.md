@@ -4,7 +4,7 @@ Next-generation Matloob platform. This repository replaces the legacy Laravel ap
 
 ## Status
 
-Phase 1 — repository skeleton. No code, no solution, no Angular app yet. The Phase 0 planning docs in [`docs/`](docs/) are the contract.
+Phase 2 — backend skeleton. .NET 10 solution under [`backend/`](backend/) with FastEndpoints + OpenAPI + Serilog and a Docker Compose for local Postgres under [`docker/`](docker/). No EF Core, no IdM auth, no business endpoints yet. The Phase 0 planning docs in [`docs/`](docs/) remain the contract.
 
 ## Stack (target)
 
@@ -61,6 +61,61 @@ The old Laravel system lives at [`d:/Sure/matloob-backoffice`](../matloob-backof
 - Database schema (see migration plan)
 - Existing admin (Filament) screens being replaced by Angular admin
 
+## Local development
+
+### Prerequisites
+
+- .NET 10 SDK (currently pinned at 10.0.102 in CI; any 10.0.x works)
+- Docker Desktop (or any Docker engine + Compose v2)
+- Visual Studio 2022 17.12+ (for opening `backend/Matloob.sln`) and/or VS Code
+
+### Start PostgreSQL
+
+```powershell
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml ps      # confirms "healthy"
+```
+
+Connection string (the .NET API will read this from `appsettings.Development.json` in Phase 3):
+
+```
+Host=localhost;Port=54321;Database=matloob;Username=matloob;Password=matloob_dev_password
+```
+
+Stop and remove the container (data preserved in the named volume):
+
+```powershell
+docker compose -f docker/docker-compose.yml down
+```
+
+Wipe the data volume too (use when you want a fresh database):
+
+```powershell
+docker compose -f docker/docker-compose.yml down -v
+```
+
+### Run the API
+
+```powershell
+dotnet run --project backend/src/Matloob.Api
+```
+
+The API binds to `http://localhost:5180` (set in `Properties/launchSettings.json`). Useful URLs:
+
+| URL | Purpose |
+|---|---|
+| `http://localhost:5180/health` | Liveness — returns `Healthy` |
+| `http://localhost:5180/health/ready` | Readiness — returns `Healthy` (will check DB + IdM in Phase 3+) |
+| `http://localhost:5180/api/v1/system/ping` | Framework smoke endpoint — returns `{"status":"ok"}` |
+| `http://localhost:5180/swagger` | Swagger UI (Development only) |
+| `http://localhost:5180/swagger/v1/swagger.json` | OpenAPI document |
+
+### Run the tests
+
+```powershell
+dotnet test backend/Matloob.sln
+```
+
 ## Next phase
 
-Phase 2 — initialize the .NET 10 solution under `backend/`. See [`docs/`](docs/) for the full phased plan.
+Phase 3 — EF Core + Npgsql + `BaseAuditableEntity` + audit/soft-delete interceptors + initial migration. The `/health/ready` endpoint will then probe the live Postgres connection.
