@@ -28,6 +28,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Persistence: EF Core 10 + Npgsql provider + snake_case naming -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore"            Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design"     Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools"      Version="10.0.8" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL"    Version="10.0.1" />
+    <PackageVersion Include="EFCore.NamingConventions"                 Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack — pinned from the `dotnet new xunit` template (.NET 10 SDK 10.0.102) -->
     <PackageVersion Include="coverlet.collector"           Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk"       Version="17.14.1" />
