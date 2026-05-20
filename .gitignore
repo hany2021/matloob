@@ -1,0 +1,185 @@
+# ============================================================================
+# Matloob .gitignore — covers .NET 10 + Angular + Docker + IDEs + OS
+# ============================================================================
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- IDEs / editors ---------------------------------------------------------
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.userprefs
+*.rsuser
+
+# Rider / JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code (allow shared workspace settings; ignore personal/launch overrides)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# --- .NET / Visual Studio build artifacts -----------------------------------
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+[Bb]uild/
+[Bb]uildLog.*
+[Tt]emp/
+[Tt]est[Rr]esult*/
+*.binlog
+artifacts/
+publish/
+PublishProfiles/
+*.[Pp]ublish.xml
+*.azurePubxml
+*.pubxml
+*.pubxml.user
+
+# DotnetCore CLI tools
+.dotnet/
+project.lock.json
+project.fragment.lock.json
+
+# Build output
+*.dll
+*.exe
+*.pdb
+*.cache
+*.suo
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Code coverage / test
+*.coverage
+*.coveragexml
+[Cc]overage/
+coverage.opencover.xml
+coverage.cobertura.xml
+TestResults/
+nunit-*.xml
+*.trx
+
+# StyleCop / analyzer caches
+StyleCopReport.xml
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Visual Studio code coverage
+*.dotCover
+*.dotCover.xml
+
+# User secrets are stored in %APPDATA% — but defensive ignore for local secrets
+secrets.json
+appsettings.*.local.json
+appsettings.Local.json
+
+# --- Node / Angular ---------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.cjs
+.pnp.loader.mjs
+
+# Angular workspace caches + outputs
+/.angular/
+.angular/
+dist/
+tmp/
+out-tsc/
+bazel-out/
+*.tsbuildinfo
+
+# Angular test artifacts
+/coverage
+/libpeerconnection.log
+testem.log
+
+# --- Environment / secrets --------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pfx
+*.cer
+*.key
+!*.template.env
+!.env.example
+!.env.*.example
+
+# --- Docker / Compose -------------------------------------------------------
+docker-compose.override.yml
+docker-compose.*.local.yml
+docker/.data/
+docker/.volumes/
+
+# --- Local data / runtime ---------------------------------------------------
+_assets/
+_uploads/
+storage/
+logs/
+*.log
+*.log.*
+
+# --- Generated artifacts (must regenerate, never commit) --------------------
+admin/**/src/app/generated/
+backend/**/Generated/
+docs/openapi/*.generated.*
+
+# --- Temporary / scratch ----------------------------------------------------
+*.tmp
+*.bak
+*.orig
+*.rej
+_tmp_*
+_scratch/
+
+# --- Anything else local-dev that crept in ---------------------------------
+.history/
+.cache/
