@@ -1,0 +1,130 @@
+# Matloob .gitattributes — pin line endings so we stop seeing "LF will be
+# replaced by CRLF" warnings on every commit. Text files are stored as LF
+# in the repo (and in the working copy) regardless of the host OS.
+
+# ----------------------------------------------------------------------------
+# Default: auto-detect text vs binary, normalize text to LF.
+# ----------------------------------------------------------------------------
+*                                text=auto eol=lf
+
+# ----------------------------------------------------------------------------
+# Source files (force LF regardless of detection)
+# ----------------------------------------------------------------------------
+*.cs                             text eol=lf diff=csharp
+*.csx                            text eol=lf diff=csharp
+*.razor                          text eol=lf
+*.cshtml                         text eol=lf
+
+# C# project / MSBuild files
+*.sln                            text eol=lf
+*.slnx                           text eol=lf
+*.csproj                         text eol=lf
+*.vbproj                         text eol=lf
+*.fsproj                         text eol=lf
+*.dbproj                         text eol=lf
+*.props                          text eol=lf
+*.targets                        text eol=lf
+*.ruleset                        text eol=lf
+*.nuspec                         text eol=lf
+
+# Frontend (Angular / TypeScript)
+*.ts                             text eol=lf
+*.tsx                            text eol=lf
+*.js                             text eol=lf
+*.jsx                            text eol=lf
+*.mjs                            text eol=lf
+*.cjs                            text eol=lf
+*.html                           text eol=lf
+*.htm                            text eol=lf
+*.css                            text eol=lf
+*.scss                           text eol=lf
+*.sass                           text eol=lf
+*.less                           text eol=lf
+*.json                           text eol=lf
+*.jsonc                          text eol=lf
+
+# Config + IaC
+*.yml                            text eol=lf
+*.yaml                           text eol=lf
+*.toml                           text eol=lf
+*.xml                            text eol=lf
+*.xsd                            text eol=lf
+*.config                         text eol=lf
+*.ini                            text eol=lf
+*.env                            text eol=lf
+
+# Docs
+*.md                             text eol=lf
+*.markdown                       text eol=lf
+*.txt                            text eol=lf
+
+# Database / SQL
+*.sql                            text eol=lf
+
+# Shell + scripts — DO NOT use CRLF or bash dies in containers
+*.sh                             text eol=lf
+*.bash                           text eol=lf
+Dockerfile                       text eol=lf
+Dockerfile.*                     text eol=lf
+*.dockerfile                     text eol=lf
+*.dockerignore                   text eol=lf
+.editorconfig                    text eol=lf
+.gitignore                       text eol=lf
+.gitattributes                   text eol=lf
+
+# Windows-only batch / PowerShell — keep CRLF
+*.bat                            text eol=crlf
+*.cmd                            text eol=crlf
+*.ps1                            text eol=crlf
+*.psm1                           text eol=crlf
+*.psd1                           text eol=crlf
+
+# ----------------------------------------------------------------------------
+# Binary files (no diff, no merge, no eol normalization)
+# ----------------------------------------------------------------------------
+*.png                            binary
+*.jpg                            binary
+*.jpeg                           binary
+*.gif                            binary
+*.ico                            binary
+*.webp                           binary
+*.bmp                            binary
+*.tif                            binary
+*.tiff                           binary
+*.svg                            text eol=lf
+*.pdf                            binary
+
+*.zip                            binary
+*.tar                            binary
+*.gz                             binary
+*.tgz                            binary
+*.7z                             binary
+*.rar                            binary
+
+*.dll                            binary
+*.exe                            binary
+*.pdb                            binary
+*.lib                            binary
+*.so                             binary
+*.dylib                          binary
+*.nupkg                          binary
+*.snupkg                         binary
+
+*.ttf                            binary
+*.otf                            binary
+*.woff                           binary
+*.woff2                          binary
+*.eot                            binary
+
+*.bak                            binary
+
+# ----------------------------------------------------------------------------
+# linguist hints (helps GitHub language stats stay honest)
+# ----------------------------------------------------------------------------
+docs/**                          linguist-documentation
+*.generated.cs                   linguist-generated
+*.designer.cs                    linguist-generated
+**/Migrations/**                 linguist-generated
+**/obj/**                        linguist-generated
+**/bin/**                        linguist-generated
+admin/**/generated/**            linguist-generated
