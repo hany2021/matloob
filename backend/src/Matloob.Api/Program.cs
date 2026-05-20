@@ -1,6 +1,8 @@
 using FastEndpoints;
 using FastEndpoints.Swagger;
 using Matloob.Api.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 
 // Bootstrap logger: captures errors thrown during host construction (before
@@ -32,9 +34,15 @@ try
     // RFC 7807 ProblemDetails responses for all unhandled exceptions and status-code 4xx/5xx.
     builder.Services.AddProblemDetails();
 
-    // Liveness + readiness probes. Real checks (DB, IdM JWKS, disk) are wired in
-    // later commits as the corresponding dependencies are added.
-    builder.Services.AddHealthChecks();
+    // Liveness + readiness probes.
+    //   - liveness (/health):           untagged checks only
+    //   - readiness (/health/ready):    checks tagged "ready" (DB + future IdM JWKS)
+    builder.Services
+        .AddHealthChecks()
+        .AddDbContextCheck<AppDbContext>(
+            name: "postgres",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: new[] { "ready" });
 
     // FastEndpoints + OpenAPI (FastEndpoints.Swagger wraps NSwag).
     builder.Services.AddFastEndpoints();
@@ -69,14 +77,21 @@ try
         app.UseSwaggerGen();
     }
 
-    // Liveness: "the process is up." No tag filter -> always reports Healthy
-    // until real checks are registered.
-    app.MapHealthChecks("/health");
+    // Liveness: "the process is up." Filters OUT any tagged check — must stay
+    // green even if dependencies (DB, IdM) are down, so orchestrators don't
+    // restart a process that is itself healthy.
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        Predicate = check => !check.Tags.Contains("ready"),
+    });
 
     // Readiness: "the process is up AND its dependencies respond." Currently
-    // identical to /health because no dependencies are wired yet; will diverge
-    // once DB and IdM JWKS checks are added (tagged "ready").
-    app.MapHealthChecks("/health/ready");
+    // only the Postgres DbContext check; IdM JWKS check joins this set in
+    // Phase 4 (tag="ready").
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"),
+    });
 
     app.Run();
 }
