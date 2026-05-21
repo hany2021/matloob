@@ -114,6 +114,11 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
+    // After auth, sync the local Users row for the current principal.
+    // Best-effort; never aborts the request (the service catches DB
+    // failures internally + logs).
+    app.UseMiddleware<Matloob.Api.Infrastructure.Identity.UserSync.CurrentUserSyncMiddleware>();
+
     // FastEndpoints wires routing + endpoint discovery from the assembly.
     app.UseFastEndpoints();
 

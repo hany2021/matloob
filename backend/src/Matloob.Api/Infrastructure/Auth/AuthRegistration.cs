@@ -28,6 +28,14 @@ public static class AuthRegistration
         services.AddHttpContextAccessor();
         services.AddSingleton<ICurrentUser, JwtCurrentUser>();
 
+        // Local user sync: on every authenticated request, create-or-
+        // update the row in the local `users` table keyed by IdM sub.
+        // Service is scoped (per-request) so it shares the request's
+        // AppDbContext + ICurrentUser instance.
+        services.AddScoped<
+            Matloob.Api.Infrastructure.Identity.UserSync.ICurrentUserSyncService,
+            Matloob.Api.Infrastructure.Identity.UserSync.CurrentUserSyncService>();
+
         var section = configuration.GetSection(IdentityOptions.SectionName);
 
         // Bind for IOptions<IdentityOptions> consumers (e.g. handlers that need
