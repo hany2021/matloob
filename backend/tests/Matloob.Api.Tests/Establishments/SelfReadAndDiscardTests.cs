@@ -13,7 +13,7 @@ namespace Matloob.Api.Tests.Establishments;
 /// Phase 8E integration tests for the user-side self-read endpoints
 /// (list + details), draft discard, and ChangeRequest cancel.
 /// </summary>
-public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFactory>
+public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFactory>, IAsyncLifetime
 {
     private static readonly TestUser HR = new(
         Sub: "estab-hr-selfread",
@@ -25,6 +25,10 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
     {
         _factory = factory;
     }
+
+    public Task InitializeAsync() => Helpers.SeedLocalUserAsync(_factory, HR.Sub);
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<Guid> CreateDraftAsync(HttpClient client)
     {

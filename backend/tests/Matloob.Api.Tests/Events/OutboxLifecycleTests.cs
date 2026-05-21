@@ -21,7 +21,8 @@ namespace Matloob.Api.Tests.Events;
 /// Reuses the existing EstablishmentsApiFactory (InMemory DB + interceptors)
 /// so the establishment endpoints' behavior matches production.
 /// </summary>
-public sealed class OutboxLifecycleTests : IClassFixture<EstablishmentsApiFactory>
+public sealed class OutboxLifecycleTests
+    : IClassFixture<EstablishmentsApiFactory>, IAsyncLifetime
 {
     private readonly EstablishmentsApiFactory _factory;
 
@@ -29,6 +30,10 @@ public sealed class OutboxLifecycleTests : IClassFixture<EstablishmentsApiFactor
     {
         _factory = factory;
     }
+
+    public Task InitializeAsync() => Helpers.SeedLocalUserAsync(_factory, "outbox-hr-1");
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<Guid> CreateApprovedEstablishmentAsync(string crNumber)
     {

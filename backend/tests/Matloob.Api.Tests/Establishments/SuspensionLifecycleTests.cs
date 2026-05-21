@@ -21,7 +21,7 @@ namespace Matloob.Api.Tests.Establishments;
 /// - history rows are appended for Suspended / Reinstated,
 /// - reinstate flips back to Approved and writes unblock.
 /// </summary>
-public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFactory>
+public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFactory>, IAsyncLifetime
 {
     private static readonly TestUser HR = new(
         Sub: "estab-hr-suspense",
@@ -33,6 +33,15 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
     {
         _factory = factory;
     }
+
+    /// <summary>
+    /// Seed the local users row for HR; AddMember enforces presence
+    /// (spec §6.3) and HR never makes their own request before being
+    /// added.
+    /// </summary>
+    public Task InitializeAsync() => Helpers.SeedLocalUserAsync(_factory, HR.Sub);
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     private async Task<Guid> CreateApprovedEstablishmentAsync(string crNumber)
     {

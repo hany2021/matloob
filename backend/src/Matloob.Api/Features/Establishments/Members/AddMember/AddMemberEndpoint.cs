@@ -144,9 +144,25 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
             return;
         }
 
-        // TODO(users-table): once the local users table exists, validate that
-        // req.UserId resolves to a row and return 422 user_not_found_in_system
-        // otherwise (spec §6.3). Until then any non-blank string is accepted.
+        // Spec §6.3: the user being added must already exist in the local
+        // users table. The CurrentUserSyncMiddleware populates rows on the
+        // first authenticated request a user makes, so a user that has
+        // never logged in won't have a local row -- 422 in that case.
+        // An IsActive=false row also fails: that account has been blocked.
+        var targetUserId = req.UserId.Trim();
+        var targetIsActive = await _db.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.IdentityId == targetUserId && u.IsActive, ct);
+        if (!targetIsActive)
+        {
+            await WriteProblemAsync(
+                StatusCodes.Status422UnprocessableEntity,
+                EstablishmentErrorCodes.UserNotFoundInSystem,
+                "User has never logged in or is inactive. Ask them to log in once before being added.",
+                ct);
+            return;
+        }
+
         var now = _clock.GetUtcNow();
         var member = new EstablishmentMember(
             id: Guid.NewGuid(),
@@ -209,17 +225,25 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
             ct);
     }
 
-    private async Task WriteConflictAsync(string code, string detail, CancellationToken ct)
+    private Task WriteConflictAsync(string code, string detail, CancellationToken ct) =>
+        WriteProblemAsync(StatusCodes.Status409Conflict, code, detail, ct);
+
+    private async Task WriteProblemAsync(int status, string code, string detail, CancellationToken ct)
     {
         var problem = new ProblemDetails
         {
-            Status = StatusCodes.Status409Conflict,
-            Title = "Conflict",
+            Status = status,
+            Title = status switch
+            {
+                StatusCodes.Status409Conflict => "Conflict",
+                StatusCodes.Status422UnprocessableEntity => "Unprocessable Entity",
+                _ => "Error",
+            },
             Detail = detail,
-            Type = "https://httpstatuses.io/409",
+            Type = $"https://httpstatuses.io/{status}",
         };
         problem.Extensions["code"] = code;
-        HttpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+        HttpContext.Response.StatusCode = status;
         HttpContext.Response.ContentType = "application/problem+json";
         await HttpContext.Response.WriteAsJsonAsync(problem, cancellationToken: ct);
     }

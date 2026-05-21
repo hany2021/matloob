@@ -23,7 +23,7 @@ namespace Matloob.Api.Tests.Establishments;
 /// Plus the AssetAccessRules tests for establishment-member grants on
 /// downloads.
 /// </summary>
-public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFactory>
+public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFactory>, IAsyncLifetime
 {
     private readonly EstablishmentsApiFactory _factory;
 
@@ -37,6 +37,21 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
     private static readonly TestUser HR = new(
         Sub: "estab-hr-1",
         Roles: new[] { "matloob_user" });
+
+    /// <summary>
+    /// Production middleware (<c>CurrentUserSyncMiddleware</c>) provisions
+    /// the local users row on a caller's first authenticated request.
+    /// Tests AddMember(HR.Sub) before HR has made any call, so we seed
+    /// the row directly. Idempotent; safe to re-run before every test.
+    /// "third-user" appears in one negative test as a target third member.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        await Helpers.SeedLocalUserAsync(_factory, HR.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, "third-user");
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>
     /// Full path: create Draft -> fill in -> link docs -> submit -> admin

@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
 using Matloob.Domain.Assets;
+using Matloob.Domain.Users;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Matloob.Api.Tests.Establishments;
@@ -26,6 +28,36 @@ internal static class Helpers
         Sub: "estab-admin-1",
         Roles: new[] { "matloob_admin" },
         Audiences: new[] { "matloob:admin" });
+
+    /// <summary>
+    /// Insert a local users row for <paramref name="sub"/>. Production code
+    /// provisions this row via CurrentUserSyncMiddleware on the user's
+    /// first authenticated request; tests that AddMember(sub) without that
+    /// sub having made any prior request need to seed the row explicitly.
+    /// Idempotent: re-seeding the same sub is a no-op.
+    /// </summary>
+    public static async Task SeedLocalUserAsync(
+        EstablishmentsApiFactory factory,
+        string sub,
+        string? email = null,
+        string? name = null,
+        string? phone = null)
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var existing = await db.Users
+            .FirstOrDefaultAsync(u => u.IdentityId == sub);
+        if (existing is not null) return;
+
+        db.Users.Add(User.CreateFromIdentity(
+            id: Guid.NewGuid(),
+            identityId: sub,
+            email: email,
+            name: name,
+            phone: phone,
+            firstSeenAt: DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>
     /// Build a complete-but-still-Draft establishment with both documents
