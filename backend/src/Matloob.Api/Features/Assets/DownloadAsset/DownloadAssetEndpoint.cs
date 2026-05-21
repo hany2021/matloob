@@ -65,7 +65,7 @@ public sealed class DownloadAssetEndpoint : EndpointWithoutRequest
             return;
         }
 
-        var verdict = AssetAccessRules.CanRead(asset, User);
+        var verdict = await AssetAccessRules.CanReadAsync(asset, User, _db, ct);
         switch (verdict)
         {
             case AssetAccessRules.AccessVerdict.Unauthenticated:
