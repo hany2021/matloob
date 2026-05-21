@@ -40,4 +40,10 @@
     <EmbeddedResource Include="Infrastructure\Persistence\Seed\Data\*.json" />
   </ItemGroup>
 
+  <!-- Test project needs to attach the internal Audit / SoftDelete
+       interceptors when it swaps the production DbContext for InMemory. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Matloob.Api.Tests" />
+  </ItemGroup>
+
 </Project>
