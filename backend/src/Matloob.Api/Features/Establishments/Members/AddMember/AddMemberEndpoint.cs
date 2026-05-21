@@ -102,7 +102,14 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
             }
         }
 
-        // Status guard.
+        // Suspended -> 423 Locked. Distinct from cannot_edit_in_status so
+        // the public frontend can tell "ask support" from "wrong state."
+        if (await EstablishmentStatusGuards.WriteIfSuspendedAsync(HttpContext, establishment, ct))
+        {
+            return;
+        }
+
+        // Status guard for the remaining non-Approved cases.
         if (establishment.Status != EstablishmentStatus.Approved)
         {
             await WriteConflictAsync(

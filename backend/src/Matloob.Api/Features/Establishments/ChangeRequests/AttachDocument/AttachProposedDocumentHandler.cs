@@ -29,6 +29,7 @@ public sealed class AttachProposedDocumentHandler
     {
         Attached,
         EstablishmentNotFound,
+        EstablishmentSuspended,
         ChangeRequestNotFound,
         Forbidden,
         ChangeRequestNotEditable,
@@ -56,6 +57,12 @@ public sealed class AttachProposedDocumentHandler
         if (establishment is null)
         {
             return new Result(Outcome.EstablishmentNotFound);
+        }
+
+        if (establishment.Status == EstablishmentStatus.Suspended)
+        {
+            return new Result(Outcome.EstablishmentSuspended,
+                ErrorCode: EstablishmentErrorCodes.EstablishmentSuspended);
         }
 
         var cr = await _db.EstablishmentChangeRequests

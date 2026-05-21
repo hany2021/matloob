@@ -80,6 +80,14 @@ public sealed class UpdateChangeRequestBasicInfoEndpoint
             }
         }
 
+        // Suspended-parent guard -- spec §8 freezes ChangeRequest edits while
+        // the parent establishment is suspended. The CR itself stays in
+        // Draft/Rejected; we just refuse to write to it.
+        if (await EstablishmentStatusGuards.WriteIfSuspendedAsync(_db, establishmentId, HttpContext, ct))
+        {
+            return;
+        }
+
         if (!cr.IsEditableByOwner)
         {
             await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status409Conflict,

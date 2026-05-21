@@ -96,7 +96,13 @@ public sealed class UpdateMemberEndpoint : Endpoint<UpdateMemberRequest, UpdateM
             }
         }
 
-        // Status guard.
+        // Suspended -> 423 Locked.
+        if (await EstablishmentStatusGuards.WriteIfSuspendedAsync(HttpContext, establishment, ct))
+        {
+            return;
+        }
+
+        // Status guard for the remaining non-Approved cases.
         if (establishment.Status != EstablishmentStatus.Approved)
         {
             await WriteConflictAsync(

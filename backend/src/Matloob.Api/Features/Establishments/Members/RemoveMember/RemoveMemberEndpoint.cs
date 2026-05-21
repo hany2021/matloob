@@ -92,6 +92,12 @@ public sealed class RemoveMemberEndpoint : EndpointWithoutRequest
             }
         }
 
+        // Suspended -> 423 Locked.
+        if (await EstablishmentStatusGuards.WriteIfSuspendedAsync(HttpContext, establishment, ct))
+        {
+            return;
+        }
+
         if (establishment.Status != EstablishmentStatus.Approved)
         {
             await WriteConflictAsync(

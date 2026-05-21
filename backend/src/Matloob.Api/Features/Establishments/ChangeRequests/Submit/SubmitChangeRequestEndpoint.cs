@@ -82,6 +82,12 @@ public sealed class SubmitChangeRequestEndpoint : EndpointWithoutRequest<SubmitC
             }
         }
 
+        // Suspended-parent guard.
+        if (await EstablishmentStatusGuards.WriteIfSuspendedAsync(_db, establishmentId, HttpContext, ct))
+        {
+            return;
+        }
+
         if (!cr.IsEditableByOwner)
         {
             await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status409Conflict,

@@ -74,6 +74,13 @@ public sealed class AttachProposedAuthorizationLetterEndpoint
                 await Send.ForbiddenAsync(ct);
                 return;
 
+            case AttachProposedDocumentHandler.Outcome.EstablishmentSuspended:
+                await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status423Locked,
+                    EstablishmentErrorCodes.EstablishmentSuspended,
+                    "Establishment is suspended; mutation actions are blocked.",
+                    ct);
+                return;
+
             case AttachProposedDocumentHandler.Outcome.ChangeRequestNotEditable:
                 await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status409Conflict,
                     EstablishmentErrorCodes.CannotEditInStatus,
