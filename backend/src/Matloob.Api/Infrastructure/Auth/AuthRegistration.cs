@@ -66,9 +66,6 @@ public static class AuthRegistration
                 };
             });
 
-        // Custom requirement handler for the establishment-context policy.
-        services.AddSingleton<IAuthorizationHandler, EstablishmentContextHandler>();
-
         // Typed HttpClient for the IdM readiness check.
         // In dev IdM uses a self-signed cert (RequireHttpsMetadata=false), so
         // we relax server-cert validation to match JwtBearer's stance. In prod
@@ -113,15 +110,10 @@ public static class AuthRegistration
                 }
             });
 
-            // Policy.EstablishmentContext — /api/v1/establishments/*
-            //   - authenticated bearer token
-            //   - matloob_user role
-            //   - X-Commissioner-UUID header present (DB ownership check is
-            //     a TODO until Phase 8 — see EstablishmentContextHandler).
-            options.AddPolicy(MatloobPolicies.EstablishmentContext, policy => policy
-                .RequireAuthenticatedUser()
-                .RequireRole("matloob_user")
-                .AddRequirements(new EstablishmentContextRequirement()));
+            // (The earlier "matloob.establishment-context" policy was removed
+            // during the Phase-8 polish pass. Establishment endpoints now
+            // resolve context from the URL id + MembershipChecks rather
+            // than an X-Commissioner-UUID header.)
         });
 
         return services;

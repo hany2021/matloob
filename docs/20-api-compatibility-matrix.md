@@ -135,7 +135,7 @@ All gated by `identity.auth` + `identity.role:matloob_user`. New equivalent: `[A
 
 ## Establishment-side API — `routes/establishments.php` (67 routes)
 
-All gated by `identity.auth` + `identity.role:matloob_user` + `establishment.context` (requires `X-Commissioner-UUID` header, today validates Commissioner; in new system validates `EstablishmentMember.IsActive AND Establishment.Status = Approved`).
+All gated by `identity.auth` + active membership on the URL-identified establishment. The legacy `X-Commissioner-UUID` header + `establishment.context` policy from the Laravel side has been **removed** in the new API — the establishment id is in the URL path (`/api/v1/establishments/{id}/...`) and the per-row check `EstablishmentMember.IsActive AND Establishment.Status ∈ {Approved, Suspended-for-reads}` runs inside each endpoint via the shared `MembershipChecks` helper.
 
 ### `/me` group — own establishment
 

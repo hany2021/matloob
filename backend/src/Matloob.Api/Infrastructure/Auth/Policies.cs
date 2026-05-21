@@ -22,18 +22,11 @@ public static class MatloobPolicies
     /// </summary>
     public const string Admin = "matloob.admin";
 
-    /// <summary>
-    /// Authenticated user with the <c>matloob_user</c> role + an
-    /// <c>X-Commissioner-UUID</c> request header. Applies to
-    /// <c>/api/v1/establishments/*</c>.
-    ///
-    /// IMPORTANT: this policy currently only validates that the header is
-    /// present. Once the EstablishmentMember entity exists (Phase 8), the
-    /// handler MUST also verify:
-    ///   - the header value is a valid Guid
-    ///   - an active EstablishmentMember row exists for (UserId, EstablishmentId)
-    ///   - the Establishment.Status is Approved (or, for read endpoints, Suspended)
-    /// Until then, no business endpoint uses this policy.
-    /// </summary>
-    public const string EstablishmentContext = "matloob.establishment-context";
+    // Note: the earlier "matloob.establishment-context" policy + its
+    // X-Commissioner-UUID header gate were removed during the Phase-8
+    // polish pass. Phase 8 endpoints establish establishment context
+    // from the URL id (loaded once per request) and use
+    // MembershipChecks.IsActive{Member,Owner}Async for the active-row
+    // / role check -- no header round-trip needed. If a future flow
+    // needs header-driven context, reintroduce alongside the use case.
 }
