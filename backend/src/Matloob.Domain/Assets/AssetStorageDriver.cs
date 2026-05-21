@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Matloob.Domain.Assets;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace Matloob.Domain.Assets;
 /// O-4 in docs/15-establishment-onboarding-spec.md. The column exists now so
 /// the move later is a no-op migration, not a schema change.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AssetStorageDriver>))]
 public enum AssetStorageDriver
 {
     /// <summary>Local filesystem under <c>Storage:AssetsRoot</c>.</summary>

@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace Matloob.Domain.Assets;
 
 /// <summary>
 /// Who can download an asset without an explicit grant.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AssetVisibility>))]
 public enum AssetVisibility
 {
     /// <summary>

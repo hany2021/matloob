@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Matloob.Domain.Assets;
 
 /// <summary>
@@ -7,6 +9,7 @@ namespace Matloob.Domain.Assets;
 /// Each new purpose category lives here; do NOT add ad-hoc strings to the
 /// column — the DB stores the enum as text so a typo becomes a build error.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AssetPurpose>))]
 public enum AssetPurpose
 {
     /// <summary>Free-form upload not yet bound to a domain object.</summary>
