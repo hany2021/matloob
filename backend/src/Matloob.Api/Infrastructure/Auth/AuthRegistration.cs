@@ -1,3 +1,4 @@
+using Matloob.Api.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -19,6 +20,13 @@ public static class AuthRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // IHttpContextAccessor is the bridge JwtCurrentUser uses to find the
+        // current request's authenticated principal. Outside a request scope
+        // (EF design-time, Quartz jobs, container init) HttpContext is null
+        // and JwtCurrentUser falls back to "system" — exactly what audit needs.
+        services.AddHttpContextAccessor();
+        services.AddSingleton<ICurrentUser, JwtCurrentUser>();
+
         var section = configuration.GetSection(IdentityOptions.SectionName);
 
         // Bind for IOptions<IdentityOptions> consumers (e.g. handlers that need

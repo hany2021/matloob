@@ -1,4 +1,3 @@
-using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,7 +5,12 @@ namespace Matloob.Api.Infrastructure.Persistence;
 
 /// <summary>
 /// Composition root for persistence. Wires DbContext + Npgsql + snake_case
-/// naming convention + interceptors + the current-user abstraction.
+/// naming convention + interceptors.
+///
+/// Depends on <c>ICurrentUser</c> being registered elsewhere (today by
+/// <c>AddMatloobAuth</c> in Infrastructure/Auth). The auditing interceptor
+/// resolves it lazily so the registration order in Program.cs does not matter
+/// at runtime.
 /// </summary>
 public static class PersistenceRegistration
 {
@@ -16,9 +20,6 @@ public static class PersistenceRegistration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Current-user abstraction. Replaced by a JWT-driven implementation in Phase 4.
-        services.AddSingleton<ICurrentUser, SystemCurrentUser>();
-
         // Clock injected into interceptors. TimeProvider is the standard .NET 8+
         // abstraction; do not roll our own.
         services.AddSingleton(TimeProvider.System);
