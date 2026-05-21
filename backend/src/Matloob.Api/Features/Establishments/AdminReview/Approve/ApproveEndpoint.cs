@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
@@ -30,12 +32,18 @@ public sealed class ApproveEndpoint : EndpointWithoutRequest<ApproveResponse>
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public ApproveEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public ApproveEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -109,6 +117,19 @@ public sealed class ApproveEndpoint : EndpointWithoutRequest<ApproveResponse>
             action: EstablishmentReviewAction.Approved,
             occurredAt: now,
             actorAdminId: _currentUser.UserId));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.Approved,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishment.Id,
+            payload: new
+            {
+                establishmentId = establishment.Id,
+                approvedByAdminId = _currentUser.UserId,
+                approvedAt = now,
+                ownerUserId = establishment.CreatedByUserId,
+            });
+        _outbox.Flush();
 
         try
         {

@@ -1,8 +1,10 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.ChangeRequests.Submit;
@@ -27,12 +29,18 @@ public sealed class SubmitChangeRequestEndpoint : EndpointWithoutRequest<SubmitC
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public SubmitChangeRequestEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public SubmitChangeRequestEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -140,6 +148,19 @@ public sealed class SubmitChangeRequestEndpoint : EndpointWithoutRequest<SubmitC
             changeRequestId: cr.Id,
             actorUserId: isAdmin ? null : _currentUser.UserId,
             actorAdminId: isAdmin ? _currentUser.UserId : null));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.ChangeRequestSubmitted,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishmentId,
+            payload: new
+            {
+                establishmentId,
+                changeRequestId = cr.Id,
+                submittedAt = now,
+                submittedByUserId = _currentUser.UserId,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

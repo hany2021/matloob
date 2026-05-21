@@ -1,8 +1,10 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
@@ -40,12 +42,18 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public AddMemberEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public AddMemberEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -158,6 +166,22 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
             actorUserId: isAdmin ? null : _currentUser.UserId,
             actorAdminId: isAdmin ? _currentUser.UserId : null,
             snapshotJson: $"{{\"memberId\":\"{member.Id}\",\"userId\":\"{member.UserId}\",\"role\":\"{member.Role}\"}}"));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.MemberAdded,
+            aggregateType: nameof(Establishment),
+            aggregateId: id,
+            payload: new
+            {
+                establishmentId = id,
+                memberId = member.Id,
+                userId = member.UserId,
+                role = member.Role.ToString(),
+                addedAt = now,
+                addedByUserId = _currentUser.UserId,
+                addedByAdmin = isAdmin,
+            });
+        _outbox.Flush();
 
         try
         {

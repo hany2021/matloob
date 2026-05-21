@@ -1,8 +1,10 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.ChangeRequests.Cancel;
@@ -39,12 +41,18 @@ public sealed class CancelChangeRequestEndpoint : EndpointWithoutRequest
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public CancelChangeRequestEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public CancelChangeRequestEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -117,6 +125,20 @@ public sealed class CancelChangeRequestEndpoint : EndpointWithoutRequest
             changeRequestId: cr.Id,
             actorUserId: isAdmin ? null : sub,
             actorAdminId: isAdmin ? sub : null));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.ChangeRequestCancelled,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishmentId,
+            payload: new
+            {
+                establishmentId,
+                changeRequestId = cr.Id,
+                cancelledAt = now,
+                cancelledByUserId = sub,
+                cancelledByAdmin = isAdmin,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

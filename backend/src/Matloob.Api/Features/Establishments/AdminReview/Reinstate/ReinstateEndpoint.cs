@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.AdminReview.Reinstate;
@@ -29,12 +31,18 @@ public sealed class ReinstateEndpoint : EndpointWithoutRequest<ReinstateResponse
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public ReinstateEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public ReinstateEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -88,6 +96,18 @@ public sealed class ReinstateEndpoint : EndpointWithoutRequest<ReinstateResponse
             action: EstablishmentReviewAction.Reinstated,
             occurredAt: now,
             actorAdminId: _currentUser.UserId));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.Reinstated,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishment.Id,
+            payload: new
+            {
+                establishmentId = establishment.Id,
+                reinstatedByAdminId = _currentUser.UserId,
+                reinstatedAt = now,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

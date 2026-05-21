@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
@@ -30,12 +32,18 @@ public sealed class RejectEndpoint : Endpoint<RejectRequest, RejectResponse>
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public RejectEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public RejectEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -103,6 +111,20 @@ public sealed class RejectEndpoint : Endpoint<RejectRequest, RejectResponse>
             occurredAt: now,
             actorAdminId: _currentUser.UserId,
             reason: establishment.RejectionReason));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.Rejected,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishment.Id,
+            payload: new
+            {
+                establishmentId = establishment.Id,
+                rejectedByAdminId = _currentUser.UserId,
+                rejectedAt = now,
+                reason = establishment.RejectionReason,
+                createdByUserId = establishment.CreatedByUserId,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

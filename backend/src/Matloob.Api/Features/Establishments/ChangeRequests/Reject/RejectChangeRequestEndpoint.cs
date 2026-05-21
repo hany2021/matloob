@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.ChangeRequests.Reject;
@@ -25,12 +27,18 @@ public sealed class RejectChangeRequestEndpoint
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public RejectChangeRequestEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public RejectChangeRequestEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -99,6 +107,20 @@ public sealed class RejectChangeRequestEndpoint
             changeRequestId: cr.Id,
             actorAdminId: _currentUser.UserId,
             reason: cr.ReviewReason));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.ChangeRequestRejected,
+            aggregateType: nameof(Establishment),
+            aggregateId: cr.EstablishmentId,
+            payload: new
+            {
+                establishmentId = cr.EstablishmentId,
+                changeRequestId = cr.Id,
+                rejectedByAdminId = _currentUser.UserId,
+                reviewedAt = now,
+                reason = cr.ReviewReason,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.AdminReview.Suspend;
@@ -33,12 +35,18 @@ public sealed class SuspendEndpoint : Endpoint<SuspendRequest, SuspendResponse>
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public SuspendEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public SuspendEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -107,6 +115,19 @@ public sealed class SuspendEndpoint : Endpoint<SuspendRequest, SuspendResponse>
             occurredAt: now,
             actorAdminId: _currentUser.UserId,
             reason: establishment.SuspensionReason));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.Suspended,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishment.Id,
+            payload: new
+            {
+                establishmentId = establishment.Id,
+                suspendedByAdminId = _currentUser.UserId,
+                suspendedAt = now,
+                reason = establishment.SuspensionReason,
+            });
+        _outbox.Flush();
 
         await _db.SaveChangesAsync(ct);
 

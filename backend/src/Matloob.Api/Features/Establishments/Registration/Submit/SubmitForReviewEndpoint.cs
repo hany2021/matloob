@@ -1,9 +1,11 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
@@ -31,12 +33,18 @@ public sealed class SubmitForReviewEndpoint : EndpointWithoutRequest<SubmitForRe
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
 
-    public SubmitForReviewEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public SubmitForReviewEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _outbox = outbox;
     }
 
     public override void Configure()
@@ -160,6 +168,19 @@ public sealed class SubmitForReviewEndpoint : EndpointWithoutRequest<SubmitForRe
             action: EstablishmentReviewAction.Submitted,
             occurredAt: now,
             actorUserId: _currentUser.UserId));
+
+        _outbox.Enqueue(
+            EstablishmentEventTypes.SubmittedForReview,
+            aggregateType: nameof(Establishment),
+            aggregateId: establishment.Id,
+            payload: new
+            {
+                establishmentId = establishment.Id,
+                createdByUserId = establishment.CreatedByUserId,
+                submittedAt = now,
+                commercialRegistrationNumber = establishment.CommercialRegistrationNumber,
+            });
+        _outbox.Flush();
 
         try
         {
