@@ -21,4 +21,12 @@ public sealed class FileStorageOptions
     /// Created on first write if missing.
     /// </summary>
     public string AssetsRoot { get; set; } = "./_assets";
+
+    /// <summary>
+    /// Largest accepted upload, in bytes. Defaults to 10 MB
+    /// (docs/15-establishment-onboarding-spec.md §3.3). Enforced at the
+    /// upload endpoint, not in the storage driver, so a future "internal
+    /// import" path can write larger blobs without bypassing storage.
+    /// </summary>
+    public long MaxUploadBytes { get; set; } = 10L * 1024 * 1024;
 }
