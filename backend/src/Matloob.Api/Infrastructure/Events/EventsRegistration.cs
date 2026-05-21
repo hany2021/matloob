@@ -1,10 +1,12 @@
+using Matloob.Api.Infrastructure.Events.Dispatcher;
+
 namespace Matloob.Api.Infrastructure.Events;
 
 /// <summary>
 /// Composition root for the events / outbox infrastructure. Wires the
-/// scoped <see cref="IOutboxWriter"/> and binds <see cref="OutboxOptions"/>.
-/// The dispatcher background service is registered alongside it in a
-/// later commit of this phase.
+/// scoped <see cref="IOutboxWriter"/>, the scoped
+/// <see cref="OutboxDispatcherService"/>, and the hosted
+/// <see cref="OutboxDispatcherBackgroundService"/>.
 /// </summary>
 public static class EventsRegistration
 {
@@ -20,6 +22,13 @@ public static class EventsRegistration
         // writes onto, so its in-memory staging list disappears together
         // with the request when an endpoint fails before SaveChanges.
         services.AddScoped<IOutboxWriter, EfOutboxWriter>();
+
+        // Dispatcher worker (scoped, one per background pass) + the
+        // hosted service that schedules it. The background service
+        // short-circuits at startup when Outbox:DispatcherEnabled is
+        // false, so registering it unconditionally is safe.
+        services.AddScoped<OutboxDispatcherService>();
+        services.AddHostedService<OutboxDispatcherBackgroundService>();
 
         return services;
     }
