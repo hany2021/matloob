@@ -1,5 +1,6 @@
 using Matloob.Api.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Matloob.Api.Infrastructure.Auth;
@@ -65,7 +66,48 @@ public static class AuthRegistration
                 };
             });
 
-        services.AddAuthorization();
+        // Custom requirement handler for the establishment-context policy.
+        services.AddSingleton<IAuthorizationHandler, EstablishmentContextHandler>();
+
+        services.AddAuthorization(options =>
+        {
+            // Policy.User — /api/v1/users/*
+            //   - authenticated bearer token
+            //   - matloob_user role on the principal
+            options.AddPolicy(MatloobPolicies.User, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole("matloob_user"));
+
+            // Policy.Admin — /api/v1/admin/*
+            //   - authenticated bearer token
+            //   - matloob_admin role
+            //   - AND `aud` claim matches the configured AdminAudience.
+            // JwtBearer's ValidAudiences already accepts either matloob:api or
+            // matloob:admin at the authentication layer; this extra RequireClaim
+            // narrows admin endpoints to the matloob:admin audience specifically,
+            // so a regular user token cannot reach admin routes even if it has
+            // the matloob_admin role by mistake.
+            options.AddPolicy(MatloobPolicies.Admin, policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireRole("matloob_admin");
+
+                if (!string.IsNullOrEmpty(identity.AdminAudience))
+                {
+                    policy.RequireClaim("aud", identity.AdminAudience);
+                }
+            });
+
+            // Policy.EstablishmentContext — /api/v1/establishments/*
+            //   - authenticated bearer token
+            //   - matloob_user role
+            //   - X-Commissioner-UUID header present (DB ownership check is
+            //     a TODO until Phase 8 — see EstablishmentContextHandler).
+            options.AddPolicy(MatloobPolicies.EstablishmentContext, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole("matloob_user")
+                .AddRequirements(new EstablishmentContextRequirement()));
+        });
 
         return services;
     }
