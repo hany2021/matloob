@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
+using Matloob.Domain.Establishments;
 using Matloob.Domain.Reference;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,6 +41,15 @@ public sealed class AppDbContext : DbContext
 
     // Uploaded files (bytes live in IFileStorage; this is the metadata table).
     public DbSet<Asset> Assets => Set<Asset>();
+
+    // Establishment onboarding aggregate + sibling entities.
+    public DbSet<Establishment> Establishments => Set<Establishment>();
+    public DbSet<EstablishmentDocument> EstablishmentDocuments => Set<EstablishmentDocument>();
+    public DbSet<EstablishmentMember> EstablishmentMembers => Set<EstablishmentMember>();
+    public DbSet<EstablishmentChangeRequest> EstablishmentChangeRequests => Set<EstablishmentChangeRequest>();
+
+    // Append-only audit. Not soft-deletable -- inherits BaseEntity, not BaseAuditableEntity.
+    public DbSet<EstablishmentReviewHistory> EstablishmentReviewHistory => Set<EstablishmentReviewHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
