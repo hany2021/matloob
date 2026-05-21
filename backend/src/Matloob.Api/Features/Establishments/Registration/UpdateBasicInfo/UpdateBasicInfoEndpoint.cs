@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Infrastructure.Auth;
@@ -24,11 +23,14 @@ namespace Matloob.Api.Features.Establishments.Registration.UpdateBasicInfo;
 /// Status guard: only Draft / Rejected accept writes (§2). Any other
 /// status returns 409 with code <c>cannot_edit_in_status</c>.
 ///
-/// Tri-state semantics: JSON keys absent from the body leave the column
-/// alone; explicit <c>null</c> on an optional column clears it. This
-/// endpoint passes only the keys present in the wire payload through to
-/// <see cref="Establishment.UpdateBasicInfo"/>, so an absent
-/// "additionalNumber" is not the same as <c>"additionalNumber": null</c>.
+/// PATCH semantics: a <c>null</c> field on the wire means "leave this
+/// column alone." To clear an optional field, send an empty string —
+/// the domain method's <see cref="Establishment.UpdateBasicInfo"/>
+/// normalizer treats whitespace-only input as <c>null</c> for optional
+/// columns. The §3.1 required columns can't be blanked through this
+/// endpoint; that's fine because the only sensible reason to blank them
+/// would be to break submission, and the user can just refrain from
+/// submitting instead.
 /// </summary>
 public sealed class UpdateBasicInfoEndpoint : Endpoint<UpdateBasicInfoRequest, UpdateBasicInfoResponse>
 {
@@ -89,36 +91,32 @@ public sealed class UpdateBasicInfoEndpoint : Endpoint<UpdateBasicInfoRequest, U
             return;
         }
 
-        // The presence map lets us treat "absent" differently from "explicit null".
-        // FastEndpoints parses the raw form via HttpContext; we read it again to
-        // recover the original key set, lower-cased.
-        var presentKeys = await ReadPresentKeysAsync(ct);
-
+        // null-on-the-wire == NoChange; any non-null value == SetTo.
         establishment.UpdateBasicInfo(
-            name: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Name), req.Name),
-            commercialRegistrationNumber: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.CommercialRegistrationNumber), req.CommercialRegistrationNumber),
-            laborOfficeId: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.LaborOfficeId), req.LaborOfficeId),
-            sequenceNumber: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.SequenceNumber), req.SequenceNumber),
-            city: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.City), req.City),
-            email: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Email), req.Email),
-            phone: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Phone), req.Phone),
-            commercialRegistrationExpiry: ChangeIfPresentValue(presentKeys, nameof(UpdateBasicInfoRequest.CommercialRegistrationExpiry), req.CommercialRegistrationExpiry),
-            economicActivity: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.EconomicActivity), req.EconomicActivity),
-            subEconomicActivity: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.SubEconomicActivity), req.SubEconomicActivity),
-            district: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.District), req.District),
-            area: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Area), req.Area),
-            street: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Street), req.Street),
-            description: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Description), req.Description),
-            locationTitle: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.LocationTitle), req.LocationTitle),
-            latitude: ChangeIfPresentValue(presentKeys, nameof(UpdateBasicInfoRequest.Latitude), req.Latitude),
-            longitude: ChangeIfPresentValue(presentKeys, nameof(UpdateBasicInfoRequest.Longitude), req.Longitude),
-            buildingNumber: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.BuildingNumber), req.BuildingNumber),
-            postalCode: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.PostalCode), req.PostalCode),
-            additionalNumber: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.AdditionalNumber), req.AdditionalNumber),
-            website: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.Website), req.Website),
-            yearsOfExperience: ChangeIfPresentValue(presentKeys, nameof(UpdateBasicInfoRequest.YearsOfExperience), req.YearsOfExperience),
-            establishmentSize: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.EstablishmentSize), req.EstablishmentSize),
-            additionalContactNumber: ChangeIfPresent(presentKeys, nameof(UpdateBasicInfoRequest.AdditionalContactNumber), req.AdditionalContactNumber));
+            name: ChangeIfPresent(req.Name),
+            commercialRegistrationNumber: ChangeIfPresent(req.CommercialRegistrationNumber),
+            laborOfficeId: ChangeIfPresent(req.LaborOfficeId),
+            sequenceNumber: ChangeIfPresent(req.SequenceNumber),
+            city: ChangeIfPresent(req.City),
+            email: ChangeIfPresent(req.Email),
+            phone: ChangeIfPresent(req.Phone),
+            commercialRegistrationExpiry: ChangeIfPresent(req.CommercialRegistrationExpiry),
+            economicActivity: ChangeIfPresent(req.EconomicActivity),
+            subEconomicActivity: ChangeIfPresent(req.SubEconomicActivity),
+            district: ChangeIfPresent(req.District),
+            area: ChangeIfPresent(req.Area),
+            street: ChangeIfPresent(req.Street),
+            description: ChangeIfPresent(req.Description),
+            locationTitle: ChangeIfPresent(req.LocationTitle),
+            latitude: ChangeIfPresent(req.Latitude),
+            longitude: ChangeIfPresent(req.Longitude),
+            buildingNumber: ChangeIfPresent(req.BuildingNumber),
+            postalCode: ChangeIfPresent(req.PostalCode),
+            additionalNumber: ChangeIfPresent(req.AdditionalNumber),
+            website: ChangeIfPresent(req.Website),
+            yearsOfExperience: ChangeIfPresent(req.YearsOfExperience),
+            establishmentSize: ChangeIfPresent(req.EstablishmentSize),
+            additionalContactNumber: ChangeIfPresent(req.AdditionalContactNumber));
 
         await _db.SaveChangesAsync(ct);
 
@@ -129,49 +127,11 @@ public sealed class UpdateBasicInfoEndpoint : Endpoint<UpdateBasicInfoRequest, U
         await Send.OkAsync(response, ct);
     }
 
-    private static FieldChange<string?> ChangeIfPresent(HashSet<string> keys, string name, string? value) =>
-        keys.Contains(name) ? FieldChange.SetTo<string?>(value) : FieldChange<string?>.NoChange;
+    private static FieldChange<string?> ChangeIfPresent(string? value) =>
+        value is null ? FieldChange<string?>.NoChange : FieldChange.SetTo<string?>(value);
 
-    private static FieldChange<T> ChangeIfPresentValue<T>(HashSet<string> keys, string name, T value) =>
-        keys.Contains(name) ? FieldChange.SetTo(value) : FieldChange<T>.NoChange;
-
-    /// <summary>
-    /// Read the raw JSON body a second time to recover the set of property
-    /// names the client actually included. Required because the bound DTO
-    /// can't tell "absent" from "explicit null" — both bind to the C# nullable's
-    /// null. The body has already been bound by FastEndpoints; we rewind and
-    /// reparse, which is cheap (the body is buffered for us).
-    /// </summary>
-    private async Task<HashSet<string>> ReadPresentKeysAsync(CancellationToken ct)
-    {
-        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        if (!HttpContext.Request.Body.CanSeek)
-        {
-            HttpContext.Request.EnableBuffering();
-        }
-        HttpContext.Request.Body.Position = 0;
-
-        try
-        {
-            using var doc = await JsonDocument.ParseAsync(HttpContext.Request.Body, cancellationToken: ct);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return keys;
-            }
-            foreach (var prop in doc.RootElement.EnumerateObject())
-            {
-                keys.Add(prop.Name);
-            }
-        }
-        catch (JsonException)
-        {
-            // Body wasn't JSON; FastEndpoints' binding would already have
-            // produced a 400, so we won't even reach here in practice.
-        }
-
-        return keys;
-    }
+    private static FieldChange<T?> ChangeIfPresent<T>(T? value) where T : struct =>
+        value is null ? FieldChange<T?>.NoChange : FieldChange.SetTo<T?>(value);
 
     private async Task SendConflictAsync(string code, string detail, CancellationToken ct)
     {
