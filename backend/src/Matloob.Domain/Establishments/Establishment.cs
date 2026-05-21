@@ -308,6 +308,67 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
     }
 
     /// <summary>
+    /// Admin suspends an Approved establishment. Spec §8: writes are locked
+    /// (mutation endpoints return 423 Locked) but reads keep working. The
+    /// suspension fields live on the row until <see cref="Reinstate"/>
+    /// clears them; the audit trail in
+    /// <see cref="EstablishmentReviewHistory"/> preserves each suspension /
+    /// reinstatement event.
+    /// </summary>
+    public void Suspend(DateTimeOffset now, string suspendedByAdminId, string reason)
+    {
+        if (string.IsNullOrWhiteSpace(suspendedByAdminId))
+        {
+            throw new ArgumentException("SuspendedByAdminId is required.", nameof(suspendedByAdminId));
+        }
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            throw new ArgumentException("Reason is required.", nameof(reason));
+        }
+        if (Status != EstablishmentStatus.Approved)
+        {
+            throw new InvalidOperationException(
+                $"Cannot suspend from status {Status}; only Approved is suspendable.");
+        }
+
+        Status = EstablishmentStatus.Suspended;
+        SuspendedAt = now;
+        SuspendedByAdminId = suspendedByAdminId;
+        SuspensionReason = reason.Trim();
+    }
+
+    /// <summary>
+    /// Admin lifts the suspension. The live suspension fields are CLEARED on
+    /// reinstatement — the audit row in
+    /// <see cref="EstablishmentReviewHistory"/> is the durable record of
+    /// "this establishment was once suspended for this reason." Keeping
+    /// SuspendedAt / SuspensionReason live after reinstatement would leak
+    /// stale state into the admin review pane next time the establishment
+    /// hit a status check.
+    /// </summary>
+    public void Reinstate(DateTimeOffset now, string reinstatedByAdminId)
+    {
+        if (string.IsNullOrWhiteSpace(reinstatedByAdminId))
+        {
+            throw new ArgumentException("ReinstatedByAdminId is required.", nameof(reinstatedByAdminId));
+        }
+        if (Status != EstablishmentStatus.Suspended)
+        {
+            throw new InvalidOperationException(
+                $"Cannot reinstate from status {Status}; only Suspended is reinstatable.");
+        }
+
+        Status = EstablishmentStatus.Approved;
+        SuspendedAt = null;
+        SuspendedByAdminId = null;
+        SuspensionReason = null;
+        // 'now' / 'reinstatedByAdminId' don't live on the row; the endpoint
+        // captures them on the EstablishmentReviewHistory append that follows.
+        _ = now;
+        _ = reinstatedByAdminId;
+    }
+
+    /// <summary>
     /// Apply an admin-approved <see cref="EstablishmentChangeRequest"/>'s
     /// Proposed* mirror to the live row. Bypasses the
     /// <see cref="IsEditableByCreator"/> guard because this is exactly the
