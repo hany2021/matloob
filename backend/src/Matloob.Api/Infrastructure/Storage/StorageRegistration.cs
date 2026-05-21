@@ -1,3 +1,5 @@
+using Matloob.Api.Infrastructure.Storage.Cleanup;
+
 namespace Matloob.Api.Infrastructure.Storage;
 
 /// <summary>
@@ -35,6 +37,16 @@ public static class StorageRegistration
                 throw new InvalidOperationException(
                     $"Storage:Driver '{driver}' is not supported. v1 only ships 'Local'.");
         }
+
+        // Orphan-cleanup scope-resolved worker. Pass-per-scope so each
+        // background tick gets a fresh AppDbContext.
+        services.AddScoped<Cleanup.AssetOrphanCleanupService>();
+
+        // Hosted background service that runs the cleanup worker on a
+        // schedule. The service short-circuits at startup if
+        // Storage:CleanupEnabled is false, so registering it
+        // unconditionally is safe.
+        services.AddHostedService<Cleanup.AssetOrphanCleanupBackgroundService>();
 
         return services;
     }
