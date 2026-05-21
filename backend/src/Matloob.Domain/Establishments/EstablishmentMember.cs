@@ -53,4 +53,25 @@ public sealed class EstablishmentMember : BaseAuditableEntity<Guid>
         AddedAt = addedAt;
         IsActive = isActive;
     }
+
+    /// <summary>
+    /// Change the role. The caller is responsible for last-Owner protection
+    /// (the membership check lives next to the persistence layer, not here).
+    /// </summary>
+    public void ChangeRole(EstablishmentMemberRole newRole)
+    {
+        Role = newRole;
+    }
+
+    /// <summary>Mark the row inactive without removing it.</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+    }
+
+    /// <summary>Re-enable a previously deactivated row.</summary>
+    public void Reactivate()
+    {
+        IsActive = true;
+    }
 }
