@@ -1,6 +1,7 @@
 using FastEndpoints;
 using FastEndpoints.Swagger;
 using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Persistence.Seed;
 using Matloob.Api.Infrastructure.Storage;
@@ -63,6 +64,10 @@ try
 
     // Local-disk file storage (v1). Future S3 driver plugs in here.
     builder.Services.AddMatloobStorage(builder.Configuration);
+
+    // Transactional outbox for domain events. Writer is request-scoped;
+    // dispatcher background service runs only when Outbox:DispatcherEnabled.
+    builder.Services.AddMatloobOutbox(builder.Configuration);
 
     // Feature-slice handlers that orchestrate across multiple endpoints get
     // registered here. Inline handlers (most slices) need no entry.
