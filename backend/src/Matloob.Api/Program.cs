@@ -64,6 +64,11 @@ try
     // Local-disk file storage (v1). Future S3 driver plugs in here.
     builder.Services.AddMatloobStorage(builder.Configuration);
 
+    // Feature-slice handlers that orchestrate across multiple endpoints get
+    // registered here. Inline handlers (most slices) need no entry.
+    builder.Services
+        .AddScoped<Matloob.Api.Features.Establishments.Registration.UploadDocument.LinkDocumentHandler>();
+
     // JwtBearer validation against NEC IdentityServer. Registers the
     // authentication scheme + authorization services. No endpoint requires
     // auth yet — that arrives in the next commit.
