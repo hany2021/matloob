@@ -367,6 +367,40 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
         await AssertErrorCodeAsync(attach, "establishment_suspended");
     }
 
+    [Fact]
+    public async Task Suspended_AttachProposedCommercialRegistration_Returns423()
+    {
+        // Mirror of Suspended_AttachProposedDocument_Returns423 but for the
+        // CommercialRegistration route. Both endpoints share the same
+        // handler (AttachProposedDocumentHandler) so the suspended branch
+        // is identical -- this test makes that explicit so future changes
+        // to either route can't regress one without the other being noticed.
+        var id = await CreateApprovedEstablishmentAsync("CR-SUSP-WRITE-CR");
+        var owner = _factory.CreateClientFor(Helpers.Creator);
+
+        var crResponse = await owner.PostAsync(
+            $"/api/v1/establishments/{id}/change-requests", content: null);
+        var crId = (await crResponse.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetGuid();
+
+        var newAssetId = Guid.NewGuid();
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Assets.Add(Helpers.MakeAsset(newAssetId, AssetPurpose.CommercialRegistration, Helpers.Creator.Sub));
+            await db.SaveChangesAsync();
+        }
+
+        await SuspendAsync(id, "freeze before CR attach");
+
+        var attach = await owner.PostAsJsonAsync(
+            $"/api/v1/establishments/{id}/change-requests/{crId}/documents/commercial-registration",
+            new { assetId = newAssetId });
+
+        Assert.Equal(HttpStatusCode.Locked, attach.StatusCode);
+        await AssertErrorCodeAsync(attach, "establishment_suspended");
+    }
+
     // -- reinstate restores write capability ---------------------------------
 
     [Fact]
