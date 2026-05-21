@@ -258,6 +258,54 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
             throw new EstablishmentRequiredFieldsMissingException(missing);
         }
     }
+
+    /// <summary>
+    /// Admin approves a PendingReview submission. The endpoint is
+    /// responsible for inserting the first Owner row + audit row; this
+    /// method just flips the lifecycle fields on the aggregate.
+    /// </summary>
+    public void Approve(DateTimeOffset now, string approvedByAdminId)
+    {
+        if (string.IsNullOrWhiteSpace(approvedByAdminId))
+        {
+            throw new ArgumentException("ApprovedByAdminId is required.", nameof(approvedByAdminId));
+        }
+        if (Status != EstablishmentStatus.PendingReview)
+        {
+            throw new InvalidOperationException(
+                $"Cannot approve from status {Status}; only PendingReview is approvable.");
+        }
+
+        Status = EstablishmentStatus.Approved;
+        ApprovedAt = now;
+        ApprovedByAdminId = approvedByAdminId;
+    }
+
+    /// <summary>
+    /// Admin rejects a PendingReview submission with a mandatory reason.
+    /// The Rejected* triplet stays populated until the next submit clears it.
+    /// </summary>
+    public void Reject(DateTimeOffset now, string rejectedByAdminId, string reason)
+    {
+        if (string.IsNullOrWhiteSpace(rejectedByAdminId))
+        {
+            throw new ArgumentException("RejectedByAdminId is required.", nameof(rejectedByAdminId));
+        }
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            throw new ArgumentException("Reason is required.", nameof(reason));
+        }
+        if (Status != EstablishmentStatus.PendingReview)
+        {
+            throw new InvalidOperationException(
+                $"Cannot reject from status {Status}; only PendingReview is rejectable.");
+        }
+
+        Status = EstablishmentStatus.Rejected;
+        RejectedAt = now;
+        RejectedByAdminId = rejectedByAdminId;
+        RejectionReason = reason.Trim();
+    }
 }
 
 /// <summary>
