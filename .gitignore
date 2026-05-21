@@ -160,9 +160,12 @@ docker/.data/
 docker/.volumes/
 
 # --- Local data / runtime ---------------------------------------------------
+# Local Assets API blob root (LocalFileStorage default; see Storage:AssetsRoot).
 _assets/
+# Anchor at repo root so the source folder Matloob.Api/Infrastructure/Storage/
+# (the IFileStorage code) is NOT ignored.
+/storage/
 _uploads/
-storage/
 logs/
 *.log
 *.log.*

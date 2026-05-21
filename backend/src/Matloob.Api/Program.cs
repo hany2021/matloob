@@ -3,6 +3,7 @@ using FastEndpoints.Swagger;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Persistence.Seed;
+using Matloob.Api.Infrastructure.Storage;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
@@ -59,6 +60,9 @@ try
 
     // EF Core + Npgsql + audit/soft-delete interceptors + current-user abstraction.
     builder.Services.AddMatloobPersistence(builder.Configuration);
+
+    // Local-disk file storage (v1). Future S3 driver plugs in here.
+    builder.Services.AddMatloobStorage(builder.Configuration);
 
     // JwtBearer validation against NEC IdentityServer. Registers the
     // authentication scheme + authorization services. No endpoint requires
