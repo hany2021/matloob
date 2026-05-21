@@ -306,6 +306,59 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
         RejectedByAdminId = rejectedByAdminId;
         RejectionReason = reason.Trim();
     }
+
+    /// <summary>
+    /// Apply an admin-approved <see cref="EstablishmentChangeRequest"/>'s
+    /// Proposed* mirror to the live row. Bypasses the
+    /// <see cref="IsEditableByCreator"/> guard because this is exactly the
+    /// admin-mediated path for editing an Approved establishment (spec §7).
+    /// Status must currently be Approved (Suspended is out of scope this
+    /// phase).
+    ///
+    /// For each Proposed* that is non-null, the matching live column is
+    /// overwritten. Document swaps live OUTSIDE this method (they touch
+    /// other aggregates and are orchestrated by the approve endpoint).
+    /// </summary>
+    public void ApplyApprovedChangeRequest(EstablishmentChangeRequest cr)
+    {
+        ArgumentNullException.ThrowIfNull(cr);
+        if (cr.EstablishmentId != Id)
+        {
+            throw new ArgumentException(
+                "ChangeRequest does not belong to this establishment.", nameof(cr));
+        }
+        if (Status != EstablishmentStatus.Approved)
+        {
+            throw new InvalidOperationException(
+                $"ChangeRequest can only be applied to an Approved establishment. Current: {Status}.");
+        }
+
+        if (cr.ProposedName is { } name) Name = name;
+        if (cr.ProposedCommercialRegistrationNumber is { } crNumber) CommercialRegistrationNumber = crNumber;
+        if (cr.ProposedLaborOfficeId is { } laborOffice) LaborOfficeId = laborOffice;
+        if (cr.ProposedSequenceNumber is { } seq) SequenceNumber = seq;
+        if (cr.ProposedCity is { } city) City = city;
+        if (cr.ProposedEmail is { } email) Email = email;
+        if (cr.ProposedPhone is { } phone) Phone = phone;
+
+        if (cr.ProposedCommercialRegistrationExpiry is { } expiry) CommercialRegistrationExpiry = expiry;
+        if (cr.ProposedEconomicActivity is { } ea) EconomicActivity = ea;
+        if (cr.ProposedSubEconomicActivity is { } sea) SubEconomicActivity = sea;
+        if (cr.ProposedDistrict is { } district) District = district;
+        if (cr.ProposedArea is { } area) Area = area;
+        if (cr.ProposedStreet is { } street) Street = street;
+        if (cr.ProposedDescription is { } description) Description = description;
+        if (cr.ProposedLocationTitle is { } locTitle) LocationTitle = locTitle;
+        if (cr.ProposedLatitude is { } lat) Latitude = lat;
+        if (cr.ProposedLongitude is { } lon) Longitude = lon;
+        if (cr.ProposedBuildingNumber is { } building) BuildingNumber = building;
+        if (cr.ProposedPostalCode is { } postal) PostalCode = postal;
+        if (cr.ProposedAdditionalNumber is { } addl) AdditionalNumber = addl;
+        if (cr.ProposedWebsite is { } web) Website = web;
+        if (cr.ProposedYearsOfExperience is { } yoe) YearsOfExperience = yoe;
+        if (cr.ProposedEstablishmentSize is { } size) EstablishmentSize = size;
+        if (cr.ProposedAdditionalContactNumber is { } additionalContact) AdditionalContactNumber = additionalContact;
+    }
 }
 
 /// <summary>
