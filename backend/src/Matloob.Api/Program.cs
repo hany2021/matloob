@@ -67,7 +67,8 @@ try
     // Feature-slice handlers that orchestrate across multiple endpoints get
     // registered here. Inline handlers (most slices) need no entry.
     builder.Services
-        .AddScoped<Matloob.Api.Features.Establishments.Registration.UploadDocument.LinkDocumentHandler>();
+        .AddScoped<Matloob.Api.Features.Establishments.Registration.UploadDocument.LinkDocumentHandler>()
+        .AddScoped<Matloob.Api.Features.Establishments.ChangeRequests.AttachDocument.AttachProposedDocumentHandler>();
 
     // JwtBearer validation against NEC IdentityServer. Registers the
     // authentication scheme + authorization services. No endpoint requires
