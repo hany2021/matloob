@@ -34,4 +34,34 @@ public interface IFileStorage
 
     /// <summary>True if the storage layer can serve the given relative path.</summary>
     Task<bool> ExistsAsync(string relativePath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Physically remove the blob at <paramref name="relativePath"/>. Used
+    /// by the orphan-cleanup background service to reclaim disk after the
+    /// retention window passes — never by online API code.
+    ///
+    /// Idempotent: a missing file returns
+    /// <see cref="DeleteResult.NotFound"/> and is NOT an error. Path-
+    /// traversal attempts return <see cref="DeleteResult.Refused"/> so the
+    /// caller can log + skip without crashing the loop. Successful removal
+    /// returns <see cref="DeleteResult.Deleted"/>.
+    /// </summary>
+    Task<DeleteResult> DeleteAsync(string relativePath, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Outcome of <see cref="IFileStorage.DeleteAsync"/>. Lets the cleanup
+/// service log a single counter per category rather than chasing per-
+/// exception types.
+/// </summary>
+public enum DeleteResult
+{
+    /// <summary>The file was on disk and is now gone.</summary>
+    Deleted,
+
+    /// <summary>The file was already missing — treated as success.</summary>
+    NotFound,
+
+    /// <summary>Path traversal or other safety violation. Caller should log + skip.</summary>
+    Refused,
 }

@@ -123,6 +123,54 @@ public sealed class LocalFileStorage : IFileStorage
         }
     }
 
+    public Task<DeleteResult> DeleteAsync(string relativePath, CancellationToken cancellationToken)
+    {
+        string absolute;
+        try
+        {
+            absolute = ResolveInsideRoot(relativePath);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Path traversal / outside-root attempt. The cleanup service
+            // logs + skips; nothing else should ever call DeleteAsync with
+            // a hostile path because relative_path comes from the DB row
+            // we wrote ourselves, but defense-in-depth is cheap here.
+            return Task.FromResult(DeleteResult.Refused);
+        }
+
+        if (!File.Exists(absolute))
+        {
+            // Already gone -- idempotent success. A previous cleanup pass
+            // might have removed the file but failed before the DB row
+            // was marked "purged"; the next pass should still report
+            // NotFound (not an error).
+            return Task.FromResult(DeleteResult.NotFound);
+        }
+
+        try
+        {
+            File.Delete(absolute);
+        }
+        catch (FileNotFoundException)
+        {
+            // Race: another process removed it between Exists and Delete.
+            return Task.FromResult(DeleteResult.NotFound);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Same shape -- the partition folder is gone.
+            return Task.FromResult(DeleteResult.NotFound);
+        }
+        // IOException / UnauthorizedAccessException intentionally bubble up
+        // to the caller. Those mean the filesystem is unhealthy (disk full,
+        // permissions wrong, file locked) and the cleanup loop should log +
+        // continue on the next pass; a defensive catch here would hide the
+        // problem.
+
+        return Task.FromResult(DeleteResult.Deleted);
+    }
+
     /// <summary>
     /// Public for tests that need to confirm where the driver wrote.
     /// </summary>
