@@ -310,6 +310,40 @@ public sealed class EstablishmentChangeRequest : BaseAuditableEntity<Guid>
         ReviewReason = reason.Trim();
     }
 
+    /// <summary>
+    /// Submitter (or any active Owner / admin) cancels a Draft or
+    /// PendingReview change request. Spec §7.1.
+    ///
+    /// We move to <see cref="EstablishmentChangeRequestStatus.Cancelled"/>
+    /// rather than soft-deleting because the row is still useful audit:
+    /// "this proposal existed and was withdrawn." Once Cancelled, the
+    /// row no longer blocks new change requests on the same establishment
+    /// (the one-in-flight rule only counts Draft / PendingReview).
+    /// </summary>
+    public void Cancel(DateTimeOffset now, string cancelledByUserId)
+    {
+        if (string.IsNullOrWhiteSpace(cancelledByUserId))
+        {
+            throw new ArgumentException("CancelledByUserId is required.", nameof(cancelledByUserId));
+        }
+        if (Status is not (EstablishmentChangeRequestStatus.Draft
+                        or EstablishmentChangeRequestStatus.PendingReview))
+        {
+            throw new InvalidOperationException(
+                $"Cannot cancel from status {Status}; only Draft and PendingReview are cancellable.");
+        }
+
+        Status = EstablishmentChangeRequestStatus.Cancelled;
+        // The Review* triplet is repurposed to record "who cancelled / when."
+        // Cancellation isn't a review per se, but storing the actor + time
+        // here keeps the lifecycle metadata in one consistent place; the
+        // ChangeRequestCancelled history row carries the same info for the
+        // admin audit pane.
+        ReviewedAt = now;
+        ReviewedByAdminId = cancelledByUserId;
+        ReviewReason = null;
+    }
+
     private static string? NormalizeOptional(string? raw)
     {
         var trimmed = raw?.Trim();
