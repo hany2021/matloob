@@ -51,6 +51,7 @@ public sealed class LinkDocumentHandler
         AssetNotFound,
         AssetNotOwnedByCaller,
         AssetPurposeMismatch,
+        SlotAlreadyTaken,
     }
 
     public sealed record Result(
@@ -137,7 +138,19 @@ public sealed class LinkDocumentHandler
             uploadedAt: now);
 
         _db.EstablishmentDocuments.Add(doc);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is
+        { Code: EstablishmentErrorCodes.DocumentSlotAlreadyExists } conflict)
+        {
+            // Two concurrent re-links beat the application-side
+            // soft-delete-then-insert sequence. ux_establishment_documents_slot_active
+            // catches the second writer; surface it as a 409 via the
+            // endpoint rather than a 500.
+            return new Result(Outcome.SlotAlreadyTaken, ErrorCode: conflict.Code);
+        }
 
         return new Result(Outcome.Linked, Document: doc);
     }

@@ -138,7 +138,21 @@ public sealed class ApproveChangeRequestEndpoint : EndpointWithoutRequest<Approv
             changeRequestId: cr.Id,
             actorAdminId: _currentUser.UserId));
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is { } conflict)
+        {
+            // Proposed CR-number could collide with another establishment's
+            // live CR-number (raced by an onboarding approve), or the
+            // document swap could race a parallel re-link. Either way the
+            // partial unique indexes settle the conflict; surface 409 +
+            // machine-readable code instead of a generic 500.
+            await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status409Conflict,
+                conflict.Code, conflict.Detail, ct);
+            return;
+        }
 
         await Send.OkAsync(
             new ApproveChangeRequestResponse(

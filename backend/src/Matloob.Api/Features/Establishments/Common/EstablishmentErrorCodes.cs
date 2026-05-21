@@ -21,4 +21,21 @@ internal static class EstablishmentErrorCodes
     public const string UserNotFoundInSystem = "user_not_found_in_system";
     public const string ChangeRequestAlreadyExists = "change_request_already_exists";
     public const string ChangeRequestEmpty = "change_request_empty";
+
+    /// <summary>
+    /// One active <see cref="Matloob.Domain.Establishments.EstablishmentDocument"/>
+    /// already exists for the (establishment_id, document_type) pair.
+    /// Surfaced by the DB-level constraint <c>ux_establishment_documents_slot_active</c>
+    /// when a concurrent re-link beats the application-side soft-delete-then-insert pair.
+    /// </summary>
+    public const string DocumentSlotAlreadyExists = "document_slot_already_exists";
+
+    /// <summary>
+    /// An active <see cref="Matloob.Domain.Establishments.EstablishmentMember"/>
+    /// row already exists for the (establishment_id, user_id) pair.
+    /// Surfaced both by the application-side duplicate check in AddMember
+    /// and by the DB-level <c>ux_establishment_members_pair_active</c>
+    /// constraint when two requests race.
+    /// </summary>
+    public const string MemberAlreadyExists = "member_already_exists";
 }

@@ -130,7 +130,7 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
         if (alreadyMember)
         {
             await WriteConflictAsync(
-                "member_already_active",
+                EstablishmentErrorCodes.MemberAlreadyExists,
                 "User is already an active member of this establishment.",
                 ct);
             return;
@@ -159,7 +159,17 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
             actorAdminId: isAdmin ? _currentUser.UserId : null,
             snapshotJson: $"{{\"memberId\":\"{member.Id}\",\"userId\":\"{member.UserId}\",\"role\":\"{member.Role}\"}}"));
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is { } conflict)
+        {
+            // Racing AddMember calls slip past the application-side
+            // duplicate check and hit ux_establishment_members_pair_active.
+            await WriteConflictAsync(conflict.Code, conflict.Detail, ct);
+            return;
+        }
 
         HttpContext.Response.Headers.Location =
             $"/api/v1/establishments/{id}/members/{member.Id}";

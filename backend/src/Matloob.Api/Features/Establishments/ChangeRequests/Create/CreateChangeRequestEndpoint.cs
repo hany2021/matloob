@@ -122,7 +122,20 @@ public sealed class CreateChangeRequestEndpoint : EndpointWithoutRequest<CreateC
             createdByUserId: _currentUser.UserId);
         _db.EstablishmentChangeRequests.Add(cr);
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is { } conflict)
+        {
+            // The application-side "one-in-flight" check races with a
+            // concurrent Create; let the DB-level partial unique index
+            // settle the tie and reply with the same 409 the pre-flight
+            // would have produced.
+            await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status409Conflict,
+                conflict.Code, conflict.Detail, ct);
+            return;
+        }
 
         HttpContext.Response.Headers.Location =
             $"/api/v1/establishments/{establishmentId}/change-requests/{cr.Id}";

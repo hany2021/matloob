@@ -110,7 +110,18 @@ public sealed class ApproveEndpoint : EndpointWithoutRequest<ApproveResponse>
             occurredAt: now,
             actorAdminId: _currentUser.UserId));
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is { } conflict)
+        {
+            // Two admins racing the same approve could both try to insert
+            // a first-Owner member row; ux_establishment_members_pair_active
+            // settles it.
+            await WriteConflictAsync(conflict.Code, conflict.Detail, ct);
+            return;
+        }
 
         await Send.OkAsync(new ApproveResponse(
             Id: establishment.Id,

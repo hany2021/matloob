@@ -95,6 +95,14 @@ public sealed class LinkAuthorizationLetterEndpoint
                     ct);
                 return;
 
+            case LinkDocumentHandler.Outcome.SlotAlreadyTaken:
+                // Race: another link won the slot before our save committed.
+                await WriteConflictAsync(
+                    EstablishmentErrorCodes.DocumentSlotAlreadyExists,
+                    "Another active document already occupies this slot. Refresh and try again.",
+                    ct);
+                return;
+
             case LinkDocumentHandler.Outcome.Linked:
                 var doc = result.Document!;
                 HttpContext.Response.Headers.Location =

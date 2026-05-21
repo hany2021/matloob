@@ -161,7 +161,17 @@ public sealed class SubmitForReviewEndpoint : EndpointWithoutRequest<SubmitForRe
             occurredAt: now,
             actorUserId: _currentUser.UserId));
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueConstraintTranslator.TryTranslate(ex) is { } conflict)
+        {
+            // The CR-number pre-flight raced a parallel submit; the partial
+            // unique index ux_establishments_cr_active wins the race.
+            await WriteConflictAsync(conflict.Code, conflict.Detail, ct);
+            return;
+        }
 
         await Send.OkAsync(
             new SubmitForReviewResponse(
