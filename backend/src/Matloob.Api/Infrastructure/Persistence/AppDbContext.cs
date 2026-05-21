@@ -3,6 +3,7 @@ using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Matloob.Domain.Reference;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +51,11 @@ public sealed class AppDbContext : DbContext
 
     // Append-only audit. Not soft-deletable -- inherits BaseEntity, not BaseAuditableEntity.
     public DbSet<EstablishmentReviewHistory> EstablishmentReviewHistory => Set<EstablishmentReviewHistory>();
+
+    // Transactional outbox. Written in the same SaveChanges as the aggregate
+    // change that triggered the event; drained by the dispatcher background
+    // service.
+    public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
