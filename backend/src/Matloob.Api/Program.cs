@@ -37,11 +37,15 @@ try
 
     // Liveness + readiness probes.
     //   - liveness (/health):           untagged checks only
-    //   - readiness (/health/ready):    checks tagged "ready" (DB + future IdM JWKS)
+    //   - readiness (/health/ready):    checks tagged "ready" (Postgres + IdM JWKS)
     builder.Services
         .AddHealthChecks()
         .AddDbContextCheck<AppDbContext>(
             name: "postgres",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: new[] { "ready" })
+        .AddCheck<IdentityServerHealthCheck>(
+            name: "idm-jwks",
             failureStatus: HealthStatus.Unhealthy,
             tags: new[] { "ready" });
 
@@ -97,9 +101,9 @@ try
         Predicate = check => !check.Tags.Contains("ready"),
     });
 
-    // Readiness: "the process is up AND its dependencies respond." Currently
-    // only the Postgres DbContext check; IdM JWKS check joins this set in
-    // Phase 4 (tag="ready").
+    // Readiness: "the process is up AND its dependencies respond." Checks:
+    //   - postgres   (DbContext connectivity)
+    //   - idm-jwks   (OIDC discovery + JWKS reachable at Identity:Authority)
     app.MapHealthChecks("/health/ready", new HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("ready"),

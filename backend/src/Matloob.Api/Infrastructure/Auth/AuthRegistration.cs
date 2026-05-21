@@ -69,6 +69,21 @@ public static class AuthRegistration
         // Custom requirement handler for the establishment-context policy.
         services.AddSingleton<IAuthorizationHandler, EstablishmentContextHandler>();
 
+        // Typed HttpClient for the IdM readiness check.
+        // In dev IdM uses a self-signed cert (RequireHttpsMetadata=false), so
+        // we relax server-cert validation to match JwtBearer's stance. In prod
+        // IdM presents a real cert and we want full validation.
+        services.AddHttpClient<IdentityServerHealthCheck>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(5);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = identity.RequireHttpsMetadata
+                ? null
+                : HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        });
+
         services.AddAuthorization(options =>
         {
             // Policy.User — /api/v1/users/*
