@@ -17,7 +17,7 @@ namespace Matloob.Api.Tests.Auth;
 /// checks (DbContextCheck, IdM JWKS) would touch real dependencies; they live
 /// in the wire-up but are simply not hit by these auth tests.
 /// </summary>
-public sealed class MatloobApiFactory : WebApplicationFactory<Program>
+public class MatloobApiFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

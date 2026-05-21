@@ -53,6 +53,10 @@
     <!-- Integration testing (WebApplicationFactory + TestServer).
          Mvc.Testing transitively brings AspNetCore.TestHost. -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.8" />
+    <!-- EF Core InMemory provider — used by integration tests that hit the
+         DbContext (e.g. init-data) so the test host does not require a
+         running Postgres. -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
   </ItemGroup>
 
 </Project>
