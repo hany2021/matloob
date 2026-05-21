@@ -19,4 +19,6 @@ internal static class EstablishmentErrorCodes
     public const string EstablishmentSuspended = "establishment_suspended";
     public const string LastOwnerProtected = "last_owner_protected";
     public const string UserNotFoundInSystem = "user_not_found_in_system";
+    public const string ChangeRequestAlreadyExists = "change_request_already_exists";
+    public const string ChangeRequestEmpty = "change_request_empty";
 }
