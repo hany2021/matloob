@@ -2,6 +2,7 @@ using FastEndpoints;
 using FastEndpoints.Swagger;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
@@ -66,6 +67,18 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseDeveloperExceptionPage();
+
+        // Seed canonical reference / lookup data on Dev startup. Idempotent:
+        // each per-entity step skips a table that already has rows, so it is
+        // safe to run on every launch.
+        // Excluded in Testing/Production: WebApplicationFactory uses environment
+        // "Testing", and Production seeding goes through a dedicated migration
+        // job, not the API process.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await ReferenceDataSeeder.SeedAsync(db);
+        }
     }
 
     // One structured log line per HTTP request (method, path, status, elapsed ms).

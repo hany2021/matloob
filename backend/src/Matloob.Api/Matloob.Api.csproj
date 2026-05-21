@@ -34,4 +34,10 @@
     <ProjectReference Include="..\Matloob.Contracts\Matloob.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- Reference-data JSON files ship inside the assembly so the seeder works
+       the same in Dev, integration tests, and a published build. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Infrastructure\Persistence\Seed\Data\*.json" />
+  </ItemGroup>
+
 </Project>
