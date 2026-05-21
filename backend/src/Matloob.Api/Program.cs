@@ -1,5 +1,6 @@
 using FastEndpoints;
 using FastEndpoints.Swagger;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -51,6 +52,11 @@ try
     // EF Core + Npgsql + audit/soft-delete interceptors + current-user abstraction.
     builder.Services.AddMatloobPersistence(builder.Configuration);
 
+    // JwtBearer validation against NEC IdentityServer. Registers the
+    // authentication scheme + authorization services. No endpoint requires
+    // auth yet — that arrives in the next commit.
+    builder.Services.AddMatloobAuth(builder.Configuration);
+
     var app = builder.Build();
 
     if (app.Environment.IsDevelopment())
@@ -66,6 +72,12 @@ try
 
     // Translate unhandled exceptions (5xx) into ProblemDetails bodies.
     app.UseExceptionHandler();
+
+    // Authentication / authorization run BEFORE the endpoint-routing terminal
+    // middleware. No endpoint currently requires either, so anonymous traffic
+    // still reaches every route. Endpoint-level policies arrive in the next commit.
+    app.UseAuthentication();
+    app.UseAuthorization();
 
     // FastEndpoints wires routing + endpoint discovery from the assembly.
     app.UseFastEndpoints();
