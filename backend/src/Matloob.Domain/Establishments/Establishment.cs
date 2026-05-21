@@ -211,4 +211,67 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
         var trimmed = raw?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
+
+    /// <summary>
+    /// Transition Draft / Rejected → PendingReview. Spec §2 + §3.1: the seven
+    /// required scalar fields must be populated. Document presence is checked
+    /// by the caller (which has the DbContext) — keeping that out of the
+    /// aggregate keeps it from depending on persistence.
+    /// </summary>
+    /// <param name="now">Server clock — the caller passes
+    /// <c>TimeProvider.GetUtcNow()</c> so tests can pin a deterministic
+    /// timestamp.</param>
+    public void SubmitForReview(DateTimeOffset now)
+    {
+        if (!IsEditableByCreator)
+        {
+            throw new InvalidOperationException(
+                $"Cannot submit from status {Status}; allowed only from Draft or Rejected.");
+        }
+
+        EnsureRequiredFieldsPopulated();
+
+        Status = EstablishmentStatus.PendingReview;
+        SubmittedAt = now;
+
+        // Clear the current Rejected* triplet -- the rejection is now history
+        // (kept in EstablishmentReviewHistory) and shouldn't leak back into
+        // the admin review pane on resubmit.
+        RejectedAt = null;
+        RejectedByAdminId = null;
+        RejectionReason = null;
+    }
+
+    private void EnsureRequiredFieldsPopulated()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(Name)) missing.Add(nameof(Name));
+        if (string.IsNullOrWhiteSpace(CommercialRegistrationNumber)) missing.Add(nameof(CommercialRegistrationNumber));
+        if (string.IsNullOrWhiteSpace(LaborOfficeId)) missing.Add(nameof(LaborOfficeId));
+        if (string.IsNullOrWhiteSpace(SequenceNumber)) missing.Add(nameof(SequenceNumber));
+        if (string.IsNullOrWhiteSpace(City)) missing.Add(nameof(City));
+        if (string.IsNullOrWhiteSpace(Email)) missing.Add(nameof(Email));
+        if (string.IsNullOrWhiteSpace(Phone)) missing.Add(nameof(Phone));
+
+        if (missing.Count > 0)
+        {
+            throw new EstablishmentRequiredFieldsMissingException(missing);
+        }
+    }
+}
+
+/// <summary>
+/// Thrown by <see cref="Establishment.SubmitForReview"/> when one or more
+/// §3.1 fields are still empty. The endpoint maps this to a 400 with a
+/// per-field error list.
+/// </summary>
+public sealed class EstablishmentRequiredFieldsMissingException : Exception
+{
+    public IReadOnlyList<string> MissingFields { get; }
+
+    public EstablishmentRequiredFieldsMissingException(IReadOnlyList<string> missingFields)
+        : base($"Required fields missing: {string.Join(", ", missingFields)}.")
+    {
+        MissingFields = missingFields;
+    }
 }
