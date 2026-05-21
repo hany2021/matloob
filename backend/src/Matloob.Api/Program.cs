@@ -54,6 +54,9 @@ try
     builder.Services.AddFastEndpoints();
     builder.Services.SwaggerDocument();
 
+    // In-memory cache for read-mostly reference data (init-data, lookups).
+    builder.Services.AddMemoryCache();
+
     // EF Core + Npgsql + audit/soft-delete interceptors + current-user abstraction.
     builder.Services.AddMatloobPersistence(builder.Configuration);
 
