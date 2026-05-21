@@ -5,6 +5,7 @@ using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Events;
 using Matloob.Domain.Reference;
+using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Infrastructure.Persistence;
@@ -56,6 +57,10 @@ public sealed class AppDbContext : DbContext
     // change that triggered the event; drained by the dispatcher background
     // service.
     public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
+
+    // Local cache of IdM users. Created/updated by ICurrentUserSyncService
+    // on authenticated requests.
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
