@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
 using Matloob.Domain.Reference;
@@ -36,6 +37,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<SuggestedAttendee> SuggestedAttendees => Set<SuggestedAttendee>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<Translation> Translations => Set<Translation>();
+
+    // Uploaded files (bytes live in IFileStorage; this is the metadata table).
+    public DbSet<Asset> Assets => Set<Asset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
