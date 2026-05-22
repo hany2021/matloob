@@ -4,6 +4,7 @@ using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Events;
+using Matloob.Domain.Opportunities;
 using Matloob.Domain.Reference;
 using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,15 @@ public sealed class AppDbContext : DbContext
     // Local cache of IdM users. Created/updated by ICurrentUserSyncService
     // on authenticated requests.
     public DbSet<User> Users => Set<User>();
+
+    // Opportunities aggregate + side tables (assets + success-management
+    // criteria + criterion assets).
+    public DbSet<Opportunity> Opportunities => Set<Opportunity>();
+    public DbSet<OpportunityAsset> OpportunityAssets => Set<OpportunityAsset>();
+    public DbSet<SuccessManagementCriterion> SuccessManagementCriteria
+        => Set<SuccessManagementCriterion>();
+    public DbSet<SuccessManagementCriterionAsset> SuccessManagementCriterionAssets
+        => Set<SuccessManagementCriterionAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
