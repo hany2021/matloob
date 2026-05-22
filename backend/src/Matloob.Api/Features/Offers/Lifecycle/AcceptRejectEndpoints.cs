@@ -170,8 +170,22 @@ public sealed class EstablishmentAcceptOfferEndpoint : EndpointWithoutRequest<Of
     }
 }
 
-/// <summary><c>POST /api/establishments/offers/{id}/reject</c> + canonical.</summary>
-public sealed class EstablishmentRejectOfferEndpoint : Endpoint<RejectionRequest, OfferResponse>
+/// <summary>
+/// <c>POST /api/establishments/offers/{id}/reject</c> + canonical.
+///
+/// <para>
+/// Legacy compatibility: the Laravel
+/// <c>Establishments\Offers\RejectOfferController</c> was a bare POST
+/// with no request body. This endpoint accepts BOTH:
+/// </para>
+/// <list type="bullet">
+///   <item>an empty body (legacy bare POST), in which case rejection is
+///     recorded with a null reason;</item>
+///   <item><c>{reason_id, other_reason?}</c> (canonical) — matches the
+///     user-side reject and sponsor-reject shapes.</item>
+/// </list>
+/// </summary>
+public sealed class EstablishmentRejectOfferEndpoint : EndpointWithoutRequest<OfferResponse>
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
@@ -197,7 +211,7 @@ public sealed class EstablishmentRejectOfferEndpoint : Endpoint<RejectionRequest
         Summary(s => s.Summary = "Establishment rejects an offer where it is the applicant.");
     }
 
-    public override async Task HandleAsync(RejectionRequest req, CancellationToken ct)
+    public override async Task HandleAsync(CancellationToken ct)
     {
         var sub = _currentUser.UserId;
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
@@ -208,8 +222,11 @@ public sealed class EstablishmentRejectOfferEndpoint : Endpoint<RejectionRequest
             _db, offerId, establishmentId.Value, ct);
         if (offer is null) { await Send.NotFoundAsync(ct); return; }
 
+        // Body is optional. Try to parse JSON; ignore parse errors.
+        var body = await TryReadOptionalRejectionBodyAsync(HttpContext, ct);
+
         if (!OfferLifecycleQueries.TryTransition(
-                () => offer.Reject(req.ReasonId, req.OtherReason), out var err))
+                () => offer.Reject(body?.ReasonId, body?.OtherReason), out var err))
         {
             await ProblemWriter.WriteAsync(HttpContext, StatusCodes.Status422UnprocessableEntity,
                 OfferErrorCodes.InvalidStatusTransition, err, ct);
@@ -218,11 +235,34 @@ public sealed class EstablishmentRejectOfferEndpoint : Endpoint<RejectionRequest
 
         var now = _clock.GetUtcNow();
         _outbox.Enqueue(OfferEventTypes.Rejected, nameof(Offer), offer.Id,
-            new { id = offer.Id, reasonId = req.ReasonId, rejectedAt = now, rejectedByEstablishmentId = establishmentId.Value });
+            new { id = offer.Id, reasonId = body?.ReasonId, rejectedAt = now, rejectedByEstablishmentId = establishmentId.Value });
         _outbox.Flush();
         await _db.SaveChangesAsync(ct);
 
         await Send.OkAsync(await OfferReadMapper.MapAsync(_db, offer, now, ct), ct);
+    }
+
+    /// <summary>
+    /// Best-effort read of an optional JSON body
+    /// <c>{reason_id, other_reason?}</c>. Returns null on empty body /
+    /// unparseable JSON — the establishment-reject route was a bare
+    /// POST in Laravel and clients may not send anything.
+    /// </summary>
+    private static async Task<RejectionRequest?> TryReadOptionalRejectionBodyAsync(
+        HttpContext ctx, CancellationToken ct)
+    {
+        if (ctx.Request.ContentLength is 0 or null)
+        {
+            return null;
+        }
+        try
+        {
+            return await ctx.Request.ReadFromJsonAsync<RejectionRequest>(ct);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 
@@ -235,7 +275,7 @@ public sealed class EstablishmentRejectOfferEndpoint : Endpoint<RejectionRequest
 public sealed class RejectionRequest
 {
     [JsonPropertyName("reason_id")]
-    public Guid ReasonId { get; init; }
+    public Guid? ReasonId { get; init; }
 
     [JsonPropertyName("other_reason")]
     public string? OtherReason { get; init; }

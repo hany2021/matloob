@@ -159,7 +159,14 @@ public sealed class Offer : BaseAuditableEntity<Guid>, IAggregateRoot
         AcceptedAt = at;
     }
 
-    public void Reject(Guid rejectionReasonId, string? otherReason = null)
+    /// <summary>
+    /// Reject a Pending offer. <paramref name="rejectionReasonId"/> is
+    /// nullable to support the legacy Laravel
+    /// <c>Establishments/Offers/RejectOfferController</c> route which
+    /// accepted a bare POST without a body. New endpoints that want to
+    /// enforce a reason should validate at the HTTP layer.
+    /// </summary>
+    public void Reject(Guid? rejectionReasonId, string? otherReason = null)
     {
         if (Status != OfferStatus.Pending)
         {
@@ -224,7 +231,7 @@ public sealed class Offer : BaseAuditableEntity<Guid>, IAggregateRoot
         Status = OfferStatus.Pending;
     }
 
-    public void SponsorReject(Guid rejectionReasonId, string? otherReason = null)
+    public void SponsorReject(Guid? rejectionReasonId, string? otherReason = null)
     {
         if (Status != OfferStatus.PendingSponsorApproval)
         {
