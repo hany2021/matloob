@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FastEndpoints;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
@@ -25,13 +26,9 @@ namespace Matloob.Api.Features.Profile.EstablishmentList;
 ///     labor_office_id, sequence_number }
 /// ]
 /// </code>
-/// - <c>id</c> is the establishment's GUID (Laravel returned the
-///   commissioner-uuid; we use the canonical establishment id because
-///   "commissioner" doesn't exist as an entity in the new system).
-/// - <c>type</c> is always <c>"establishment"</c> for forward-compatibility
-///   with the legacy frontend's switch.
-/// - <c>logo</c> stays null until the logo-asset feature lands (the
-///   matrix already calls this out as a follow-on).
+/// snake_case via <see cref="JsonPropertyNameAttribute"/>. <c>status</c> and
+/// <c>role</c> are returned as new-client extension fields (Laravel parsers
+/// ignore unknown keys).
 ///
 /// PG-only: NO QiwaApi call. We surface only establishments where the
 /// caller has an active <see cref="EstablishmentMember"/> row AND the
@@ -88,26 +85,53 @@ public sealed class GetMyEstablishmentListEndpoint
                && (e.Status == EstablishmentStatus.Approved
                 || e.Status == EstablishmentStatus.Suspended)
             orderby e.Name
-            select new MyEstablishmentListItem(
-                Id: e.Id,
-                Name: e.Name,
-                Type: "establishment",
-                Logo: null,
-                LaborOfficeId: e.LaborOfficeId,
-                SequenceNumber: e.SequenceNumber,
-                Status: e.Status,
-                Role: m.Role)).ToListAsync(ct);
+            select new MyEstablishmentListItem
+            {
+                Id = e.Id,
+                Name = e.Name,
+                Type = "establishment",
+                Logo = null,
+                LaborOfficeId = e.LaborOfficeId,
+                SequenceNumber = e.SequenceNumber,
+                Status = e.Status.ToString(),
+                Role = m.Role.ToString(),
+            }).ToListAsync(ct);
 
         await Send.OkAsync(rows, ct);
     }
 }
 
-public sealed record MyEstablishmentListItem(
-    Guid Id,
-    string Name,
-    string Type,
-    string? Logo,
-    string LaborOfficeId,
-    string SequenceNumber,
-    EstablishmentStatus Status,
-    EstablishmentMemberRole Role);
+/// <summary>
+/// Wire shape returned by the establishment-list endpoints. Mirrors the
+/// Laravel <c>Users/Me/Profiles/EstablishmentResource::toArray()</c> field
+/// set (id, name, type, logo, labor_office_id, sequence_number) and adds
+/// new-client extensions (status, role) that Laravel parsers ignore.
+/// </summary>
+public sealed class MyEstablishmentListItem
+{
+    [JsonPropertyName("id")]
+    public Guid Id { get; init; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    [JsonPropertyName("type")]
+    public string Type { get; init; } = "establishment";
+
+    [JsonPropertyName("logo")]
+    public string? Logo { get; init; }
+
+    [JsonPropertyName("labor_office_id")]
+    public string LaborOfficeId { get; init; } = string.Empty;
+
+    [JsonPropertyName("sequence_number")]
+    public string SequenceNumber { get; init; } = string.Empty;
+
+    /// <summary>New-client extension: establishment status (Approved/Suspended).</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>New-client extension: the caller's role in this establishment.</summary>
+    [JsonPropertyName("role")]
+    public string Role { get; init; } = string.Empty;
+}

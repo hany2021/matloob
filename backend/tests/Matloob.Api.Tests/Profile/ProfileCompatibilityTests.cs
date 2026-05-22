@@ -12,8 +12,8 @@ namespace Matloob.Api.Tests.Profile;
 /// <c>GET /api/users/profile/establishment-list</c> +
 /// <c>GET /api/v1/users/profile/establishment-list</c> (alias).
 ///
-/// Reuses EstablishmentsApiFactory because the establishment-list endpoint
-/// needs joinable establishment + member rows.
+/// Response shape mirrors Laravel snake_case keys (UserResource for
+/// /profile, EstablishmentResource for /establishment-list).
 /// </summary>
 public sealed class ProfileCompatibilityTests
     : IClassFixture<EstablishmentsApiFactory>, IAsyncLifetime
@@ -56,7 +56,7 @@ public sealed class ProfileCompatibilityTests
     }
 
     [Fact]
-    public async Task Profile_AuthenticatedUser_ReturnsCurrentRow()
+    public async Task Profile_AuthenticatedUser_ReturnsLaravelShape()
     {
         var client = _factory.CreateClientFor(FreshUser);
 
@@ -65,30 +65,42 @@ public sealed class ProfileCompatibilityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
+
+        // Laravel UserResource snake_case keys.
         Assert.Equal(FreshUser.Sub,
-            doc.RootElement.GetProperty("identityId").GetString());
-        // Placeholder relations are present and well-typed (empty arrays /
-        // explicit null) so the Laravel frontend's parser doesn't choke.
-        Assert.Equal(JsonValueKind.Array,
-            doc.RootElement.GetProperty("languages").ValueKind);
+            doc.RootElement.GetProperty("identity_id").GetString());
         Assert.Equal(JsonValueKind.Null,
             doc.RootElement.GetProperty("nationality").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            doc.RootElement.GetProperty("id_number").ValueKind);
+        Assert.Equal(JsonValueKind.Null,
+            doc.RootElement.GetProperty("bank_account").ValueKind);
+        Assert.Equal(JsonValueKind.Array,
+            doc.RootElement.GetProperty("languages").ValueKind);
+        Assert.Equal(JsonValueKind.Array,
+            doc.RootElement.GetProperty("professions").ValueKind);
+        Assert.Equal(JsonValueKind.Array,
+            doc.RootElement.GetProperty("certificates").ValueKind);
+        Assert.Equal(JsonValueKind.Array,
+            doc.RootElement.GetProperty("uncompleted_profile_sections").ValueKind);
+        Assert.False(doc.RootElement.GetProperty("onboarded").GetBoolean());
+        Assert.Equal(0,
+            doc.RootElement.GetProperty("profile_complete_percentage").GetInt32());
     }
 
     [Fact]
-    public async Task Profile_BothRoutes_ReturnSamePayload()
+    public async Task Profile_BothRoutes_ReturnSameLogicalPayload()
     {
         var client = _factory.CreateClientFor(FreshUser);
 
-        // The sync middleware refreshes LastSeenAt on every authenticated
-        // request, so the two payloads won't be byte-identical. Compare the
-        // identity fields and the relation-shape keys instead.
+        // Compare structural identity + key set; LastSeenAt is not in
+        // the payload so we can do this safely.
         using var v1Doc = JsonDocument.Parse(await client.GetStringAsync("/api/v1/profile"));
         using var legacyDoc = JsonDocument.Parse(await client.GetStringAsync("/api/users/profile"));
 
         Assert.Equal(
-            v1Doc.RootElement.GetProperty("identityId").GetString(),
-            legacyDoc.RootElement.GetProperty("identityId").GetString());
+            v1Doc.RootElement.GetProperty("identity_id").GetString(),
+            legacyDoc.RootElement.GetProperty("identity_id").GetString());
         Assert.Equal(
             v1Doc.RootElement.GetProperty("id").GetGuid(),
             legacyDoc.RootElement.GetProperty("id").GetGuid());
@@ -123,7 +135,7 @@ public sealed class ProfileCompatibilityTests
     }
 
     [Fact]
-    public async Task EstablishmentList_ActiveMember_ReturnsTheirEstablishment()
+    public async Task EstablishmentList_ActiveMember_ReturnsLaravelShape()
     {
         // Build an Approved establishment and add HR as a member.
         var creator = _factory.CreateClientFor(Helpers.Creator);
@@ -145,14 +157,15 @@ public sealed class ProfileCompatibilityTests
 
         await using var stream = await listResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var ids = doc.RootElement.EnumerateArray()
-            .Select(e => e.GetProperty("id").GetGuid())
-            .ToList();
-        Assert.Contains(id, ids);
-
         var mine = doc.RootElement.EnumerateArray()
             .Single(e => e.GetProperty("id").GetGuid() == id);
+
+        // Laravel snake_case shape.
         Assert.Equal("establishment", mine.GetProperty("type").GetString());
+        Assert.Equal(JsonValueKind.Null, mine.GetProperty("logo").ValueKind);
+        Assert.False(string.IsNullOrEmpty(mine.GetProperty("labor_office_id").GetString()));
+        Assert.False(string.IsNullOrEmpty(mine.GetProperty("sequence_number").GetString()));
+        // New-client extensions.
         Assert.Equal("Manager", mine.GetProperty("role").GetString());
         Assert.Equal("Approved", mine.GetProperty("status").GetString());
     }
@@ -168,15 +181,11 @@ public sealed class ProfileCompatibilityTests
             "/api/v1/establishments/registration/drafts", content: null);
         Assert.Equal(HttpStatusCode.Created, draftResp.StatusCode);
 
-        // Use a brand-new client whose sub is the creator's sub but who has
-        // no memberships beyond their own (Draft).
         var listResp = await creator.GetAsync("/api/users/profile/establishment-list");
         Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
 
         await using var stream = await listResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        // The creator might have Approved establishments from earlier
-        // tests in this class; assert only that no DRAFT shows up.
         foreach (var item in doc.RootElement.EnumerateArray())
         {
             var status = item.GetProperty("status").GetString();
