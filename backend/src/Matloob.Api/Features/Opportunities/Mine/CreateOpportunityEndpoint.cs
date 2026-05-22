@@ -15,25 +15,63 @@ namespace Matloob.Api.Features.Opportunities.Mine;
 /// <summary>
 /// <c>POST /api/establishments/me/opportunities</c> (Laravel-compat) and
 /// <c>POST /api/v1/establishments/{establishmentId}/opportunities</c>
-/// (canonical) — create a new opportunity issued by the resolved
+/// (canonical) — create one or many opportunities for the resolved
 /// establishment.
 ///
 /// <para>
-/// Single-opportunity body shape. The legacy Laravel endpoint accepted a
-/// bulk array (<c>event_uuid + opportunities[]</c>) — see Q-OAO-BULK-CREATE
-/// in the readiness audit. The single shape is sufficient for the public
-/// frontend's per-row create flow; a future array wrapper can layer on
-/// top without changing this endpoint.
+/// <b>Two body shapes are accepted.</b>
 /// </para>
 ///
 /// <para>
-/// Auto-status: new rows go to <see cref="OpportunityStatus.Upcoming"/>
-/// when <c>start_date</c> is in the future, otherwise
-/// <see cref="OpportunityStatus.Active"/> (Q-OPP-1 default).
+/// <b>1) Legacy Laravel bulk shape:</b>
+/// </para>
+/// <code>
+/// {
+///   "event_uuid": "...",
+///   "opportunities": [
+///     { "opportunity_category_uuid": "...", "name": "...", ... },
+///     ...
+///   ]
+/// }
+/// </code>
+/// <para>
+/// Returns an array of <see cref="OpportunityResponse"/>, matching
+/// Laravel's <c>OpportunityResource::collection</c>.
+/// </para>
+///
+/// <para>
+/// <b>2) Canonical single shape (new):</b>
+/// </para>
+/// <code>
+/// {
+///   "event_id": "...",
+///   "opportunity_category_id": "...",
+///   "name": "...",
+///   ...
+/// }
+/// </code>
+/// <para>
+/// Returns a single <see cref="OpportunityResponse"/>. Field aliases
+/// <c>event_uuid</c> / <c>opportunity_category_uuid</c> are also accepted
+/// on this shape for forward-compat with mixed clients.
+/// </para>
+///
+/// <para>
+/// Auto-status from <c>start_date</c>: Upcoming if future, Active if
+/// today/past (Q-OPP-1 default).
+/// </para>
+///
+/// <para>
+/// Inline multipart uploads from Laravel (<c>opportunities[*].uploads[]</c>
+/// and per-criterion uploads) are NOT auto-ingested here — clients link
+/// assets via the separate <c>POST /me/opportunities/{id}/assets</c>
+/// endpoint after creation. Old frontends that need the bulk multipart
+/// behavior get a documented cutover path; the JSON bulk shape covers
+/// every other field.
 /// </para>
 /// </summary>
 public sealed class CreateOpportunityEndpoint
-    : Endpoint<CreateOpportunityRequest, OpportunityResponse>
+    : Endpoint<CreateOpportunityRequest>
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
@@ -68,7 +106,7 @@ public sealed class CreateOpportunityEndpoint
             .WithTags("Opportunities"));
         Summary(s =>
         {
-            s.Summary = "Create an opportunity for the resolved establishment.";
+            s.Summary = "Create one or many opportunities for the resolved establishment.";
         });
     }
 
@@ -78,11 +116,149 @@ public sealed class CreateOpportunityEndpoint
             _db, HttpContext, _currentUser.UserId, ct);
         if (establishmentId is null) return;
 
-        // Category existence check — also implicitly asserts non-soft-deleted.
-        var category = await _db.OpportunityCategories
+        var now = _clock.GetUtcNow();
+        var sharedEventId = req.ResolvedEventId();
+
+        // -- bulk shape -----------------------------------------------------
+        if (req.Opportunities is { Count: > 0 } items)
+        {
+            if (sharedEventId is null)
+            {
+                await ProblemWriter.WriteAsync(
+                    HttpContext,
+                    StatusCodes.Status400BadRequest,
+                    "event_required",
+                    "event_uuid (or event_id) is required when posting an opportunities[] array.",
+                    ct);
+                return;
+            }
+
+            var created = new List<Opportunity>(items.Count);
+            foreach (var item in items)
+            {
+                var categoryId = item.ResolvedCategoryId();
+                if (categoryId is null)
+                {
+                    await ProblemWriter.WriteAsync(
+                        HttpContext,
+                        StatusCodes.Status422UnprocessableEntity,
+                        OpportunityErrorCodes.CategoryNotFound,
+                        "opportunity_category_uuid (or opportunity_category_id) is required on each opportunity item.",
+                        ct);
+                    return;
+                }
+
+                var categoryExists = await _db.OpportunityCategories
+                    .AsNoTracking()
+                    .AnyAsync(c => c.Id == categoryId.Value, ct);
+                if (!categoryExists)
+                {
+                    await ProblemWriter.WriteAsync(
+                        HttpContext,
+                        StatusCodes.Status422UnprocessableEntity,
+                        OpportunityErrorCodes.CategoryNotFound,
+                        "Opportunity category does not exist.",
+                        ct);
+                    return;
+                }
+
+                Opportunity opp;
+                try
+                {
+                    opp = BuildOpportunity(
+                        establishmentId.Value,
+                        sharedEventId.Value,
+                        categoryId.Value,
+                        item.Name,
+                        item.Description,
+                        item.StartDate,
+                        item.EndDate,
+                        item.LocationTitle,
+                        item.Lat ?? 0m,
+                        item.Lon ?? 0m,
+                        item.RequiredPersonnel ?? 1,
+                        now,
+                        item.CityId,
+                        item.NationalityId,
+                        item.MonthlySalary,
+                        item.YearsOfExperienceRequired,
+                        item.WorkingHoursType,
+                        item.WorkingHoursFrom,
+                        item.WorkingHoursTo,
+                        item.Fees,
+                        item.PhoneContactInformation,
+                        item.EmailContactInformation,
+                        item.EstablishmentClassification,
+                        item.Gender);
+                }
+                catch (ArgumentException ex)
+                {
+                    await ProblemWriter.WriteAsync(
+                        HttpContext,
+                        StatusCodes.Status422UnprocessableEntity,
+                        "invalid_opportunity_payload",
+                        ex.Message,
+                        ct);
+                    return;
+                }
+
+                _db.Opportunities.Add(opp);
+                _outbox.Enqueue(
+                    OpportunityEventTypes.Created,
+                    aggregateType: nameof(Opportunity),
+                    aggregateId: opp.Id,
+                    payload: new
+                    {
+                        id = opp.Id,
+                        issuerEstablishmentId = opp.IssuerEstablishmentId,
+                        eventId = opp.EventId,
+                        opportunityCategoryId = opp.OpportunityCategoryId,
+                        status = opp.Status.ToString(),
+                        createdAt = now,
+                        createdByUserId = _currentUser.UserId,
+                    });
+                created.Add(opp);
+            }
+            _outbox.Flush();
+            await _db.SaveChangesAsync(ct);
+
+            var responses = new List<OpportunityResponse>(created.Count);
+            foreach (var opp in created)
+            {
+                responses.Add(await BuildResponseAsync(opp, establishmentId, ct));
+            }
+            // Bulk → array (matches Laravel OpportunityResource::collection).
+            await Send.ResponseAsync(responses, StatusCodes.Status201Created, ct);
+            return;
+        }
+
+        // -- single shape (canonical + legacy single object) ----------------
+        if (sharedEventId is null)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status400BadRequest,
+                "event_required",
+                "event_id (or event_uuid) is required.",
+                ct);
+            return;
+        }
+        var singleCategoryId = req.ResolvedCategoryId();
+        if (singleCategoryId is null)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                OpportunityErrorCodes.CategoryNotFound,
+                "opportunity_category_id (or opportunity_category_uuid) is required.",
+                ct);
+            return;
+        }
+
+        var singleCategoryExists = await _db.OpportunityCategories
             .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == req.OpportunityCategoryId, ct);
-        if (category is null)
+            .AnyAsync(c => c.Id == singleCategoryId.Value, ct);
+        if (!singleCategoryExists)
         {
             await ProblemWriter.WriteAsync(
                 HttpContext,
@@ -93,36 +269,34 @@ public sealed class CreateOpportunityEndpoint
             return;
         }
 
-        var now = _clock.GetUtcNow();
         Opportunity opportunity;
         try
         {
-            opportunity = Opportunity.Create(
-                id: Guid.NewGuid(),
-                issuerEstablishmentId: establishmentId.Value,
-                eventId: req.EventId,
-                opportunityCategoryId: req.OpportunityCategoryId,
-                name: req.Name,
-                description: req.Description,
-                startDate: req.StartDate,
-                endDate: req.EndDate,
-                locationTitle: req.LocationTitle,
-                latitude: req.Lat,
-                longitude: req.Lon,
-                requiredPersonnel: req.RequiredPersonnel,
-                now: now,
-                cityId: req.CityId,
-                nationalityId: req.NationalityId,
-                monthlySalary: req.MonthlySalary,
-                yearsOfExperienceRequired: req.YearsOfExperienceRequired,
-                workingHoursType: ParseWorkingHours(req.WorkingHoursType),
-                workingHoursFrom: ParseTime(req.WorkingHoursFrom),
-                workingHoursTo: ParseTime(req.WorkingHoursTo),
-                fees: req.Fees,
-                phoneContactInformation: req.PhoneContactInformation,
-                emailContactInformation: req.EmailContactInformation,
-                establishmentClassifications: CollapseFlags(req.EstablishmentClassification, ParseClassification),
-                genders: CollapseFlags(req.Gender, ParseGender));
+            opportunity = BuildOpportunity(
+                establishmentId.Value,
+                sharedEventId.Value,
+                singleCategoryId.Value,
+                req.Name,
+                req.Description,
+                req.StartDate,
+                req.EndDate,
+                req.LocationTitle,
+                req.Lat ?? 0m,
+                req.Lon ?? 0m,
+                req.RequiredPersonnel ?? 1,
+                now,
+                req.CityId,
+                req.NationalityId,
+                req.MonthlySalary,
+                req.YearsOfExperienceRequired,
+                req.WorkingHoursType,
+                req.WorkingHoursFrom,
+                req.WorkingHoursTo,
+                req.Fees,
+                req.PhoneContactInformation,
+                req.EmailContactInformation,
+                req.EstablishmentClassification,
+                req.Gender);
         }
         catch (ArgumentException ex)
         {
@@ -136,7 +310,6 @@ public sealed class CreateOpportunityEndpoint
         }
 
         _db.Opportunities.Add(opportunity);
-
         _outbox.Enqueue(
             OpportunityEventTypes.Created,
             aggregateType: nameof(Opportunity),
@@ -152,15 +325,25 @@ public sealed class CreateOpportunityEndpoint
                 createdByUserId = _currentUser.UserId,
             });
         _outbox.Flush();
-
         await _db.SaveChangesAsync(ct);
 
+        var response = await BuildResponseAsync(opportunity, establishmentId, ct);
+        HttpContext.Response.Headers.Location =
+            $"/api/v1/establishments/{establishmentId.Value}/opportunities/{opportunity.Id}";
+        await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
+    }
+
+    private async Task<OpportunityResponse> BuildResponseAsync(
+        Opportunity opportunity,
+        Guid? establishmentId,
+        CancellationToken ct)
+    {
         var bundle = await OpportunityReadQueries.LoadSidecarAsync(
             _db, opportunity,
             subClaim: null,
             establishmentApplicantId: establishmentId,
             ct);
-        var response = OpportunityReadMapper.Map(
+        return OpportunityReadMapper.Map(
             opportunity,
             bundle.Category,
             bundle.Issuer,
@@ -169,83 +352,237 @@ public sealed class CreateOpportunityEndpoint
             bundle.Uploads,
             bundle.ApplicantsCount,
             bundle.IsApplied);
-
-        HttpContext.Response.Headers.Location =
-            $"/api/v1/establishments/{establishmentId.Value}/opportunities/{opportunity.Id}";
-        await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
     }
 
-    // -- helpers ------------------------------------------------------------
+    private static Opportunity BuildOpportunity(
+        Guid establishmentId,
+        Guid eventId,
+        Guid categoryId,
+        string? name,
+        string? description,
+        DateOnly? startDate,
+        DateOnly? endDate,
+        string? locationTitle,
+        decimal latitude,
+        decimal longitude,
+        int requiredPersonnel,
+        DateTimeOffset now,
+        Guid? cityId,
+        Guid? nationalityId,
+        decimal? monthlySalary,
+        byte? yearsOfExperienceRequired,
+        string? workingHoursTypeRaw,
+        string? workingHoursFromRaw,
+        string? workingHoursToRaw,
+        decimal? fees,
+        string? phoneContact,
+        string? emailContact,
+        IReadOnlyList<string>? classifications,
+        IReadOnlyList<string>? genders)
+    {
+        return Opportunity.Create(
+            id: Guid.NewGuid(),
+            issuerEstablishmentId: establishmentId,
+            eventId: eventId,
+            opportunityCategoryId: categoryId,
+            name: name ?? string.Empty,
+            description: description ?? string.Empty,
+            startDate: startDate ?? throw new ArgumentException("start_date is required.", nameof(startDate)),
+            endDate: endDate ?? throw new ArgumentException("end_date is required.", nameof(endDate)),
+            locationTitle: locationTitle ?? string.Empty,
+            latitude: latitude,
+            longitude: longitude,
+            requiredPersonnel: requiredPersonnel,
+            now: now,
+            cityId: cityId,
+            nationalityId: nationalityId,
+            monthlySalary: monthlySalary,
+            yearsOfExperienceRequired: yearsOfExperienceRequired,
+            workingHoursType: ParseEnum<WorkingHoursType>(workingHoursTypeRaw),
+            workingHoursFrom: ParseTime(workingHoursFromRaw),
+            workingHoursTo: ParseTime(workingHoursToRaw),
+            fees: fees,
+            phoneContactInformation: phoneContact,
+            emailContactInformation: emailContact,
+            establishmentClassifications: CollapseClassifications(classifications),
+            genders: CollapseGenders(genders));
+    }
 
-    private static WorkingHoursType? ParseWorkingHours(string? value) =>
-        Enum.TryParse<WorkingHoursType>(value, ignoreCase: true, out var v) ? v : null;
+    private static T? ParseEnum<T>(string? value) where T : struct, Enum =>
+        Enum.TryParse<T>(value, ignoreCase: true, out var v) ? v : null;
 
     private static TimeOnly? ParseTime(string? value) =>
         TimeOnly.TryParse(value, out var t) ? t : null;
 
-    private static EstablishmentClassification ParseClassification(string s) => s.ToLowerInvariant() switch
+    private static EstablishmentClassification CollapseClassifications(IReadOnlyList<string>? values)
     {
-        "small" => EstablishmentClassification.Small,
-        "medium" => EstablishmentClassification.Medium,
-        "large" => EstablishmentClassification.Large,
-        "freelancers" => EstablishmentClassification.Freelancers,
-        _ => EstablishmentClassification.None,
-    };
-
-    private static OpportunityGender ParseGender(string s) => s.ToLowerInvariant() switch
-    {
-        "male" => OpportunityGender.Male,
-        "female" => OpportunityGender.Female,
-        _ => OpportunityGender.None,
-    };
-
-    private static T CollapseFlags<T>(IReadOnlyList<string>? values, Func<string, T> parse)
-        where T : struct, Enum
-    {
-        if (values is null || values.Count == 0)
+        if (values is null) return EstablishmentClassification.None;
+        var result = EstablishmentClassification.None;
+        foreach (var v in values)
         {
-            return default;
+            result |= v.ToLowerInvariant() switch
+            {
+                "small" => EstablishmentClassification.Small,
+                "medium" => EstablishmentClassification.Medium,
+                "large" => EstablishmentClassification.Large,
+                "freelancers" => EstablishmentClassification.Freelancers,
+                _ => EstablishmentClassification.None,
+            };
         }
-        var combined = 0;
-        foreach (var value in values)
+        return result;
+    }
+
+    private static OpportunityGender CollapseGenders(IReadOnlyList<string>? values)
+    {
+        if (values is null) return OpportunityGender.None;
+        var result = OpportunityGender.None;
+        foreach (var v in values)
         {
-            combined |= (int)(object)parse(value);
+            result |= v.ToLowerInvariant() switch
+            {
+                "male" => OpportunityGender.Male,
+                "female" => OpportunityGender.Female,
+                _ => OpportunityGender.None,
+            };
         }
-        return (T)(object)combined;
+        return result;
     }
 }
 
+/// <summary>
+/// Polymorphic request DTO that accepts BOTH the legacy Laravel bulk
+/// shape (<c>event_uuid + opportunities[]</c>) AND the canonical
+/// single-object shape (<c>event_id + flat fields</c>). All fields are
+/// nullable; the handler decides which path to take.
+/// </summary>
 public sealed class CreateOpportunityRequest
 {
+    // -- shared event id (top-level on both shapes) --
     [JsonPropertyName("event_id")]
-    public Guid EventId { get; init; }
+    public Guid? EventId { get; init; }
+
+    /// <summary>Laravel legacy alias for <c>event_id</c>.</summary>
+    [JsonPropertyName("event_uuid")]
+    public Guid? EventUuid { get; init; }
+
+    public Guid? ResolvedEventId() => EventId ?? EventUuid;
+
+    // -- bulk shape --
+    [JsonPropertyName("opportunities")]
+    public IReadOnlyList<CreateOpportunityItem>? Opportunities { get; init; }
+
+    // -- single-shape fields (all nullable so bulk requests don't trip
+    //    FluentValidation; handler validates the chosen shape) --
 
     [JsonPropertyName("opportunity_category_id")]
-    public Guid OpportunityCategoryId { get; init; }
+    public Guid? OpportunityCategoryId { get; init; }
+
+    /// <summary>Laravel legacy alias for <c>opportunity_category_id</c>.</summary>
+    [JsonPropertyName("opportunity_category_uuid")]
+    public Guid? OpportunityCategoryUuid { get; init; }
+
+    public Guid? ResolvedCategoryId() => OpportunityCategoryId ?? OpportunityCategoryUuid;
 
     [JsonPropertyName("name")]
-    public string Name { get; init; } = string.Empty;
+    public string? Name { get; init; }
 
     [JsonPropertyName("description")]
-    public string Description { get; init; } = string.Empty;
+    public string? Description { get; init; }
 
     [JsonPropertyName("start_date")]
-    public DateOnly StartDate { get; init; }
+    public DateOnly? StartDate { get; init; }
 
     [JsonPropertyName("end_date")]
-    public DateOnly EndDate { get; init; }
+    public DateOnly? EndDate { get; init; }
 
     [JsonPropertyName("location_title")]
-    public string LocationTitle { get; init; } = string.Empty;
+    public string? LocationTitle { get; init; }
 
     [JsonPropertyName("lat")]
-    public decimal Lat { get; init; }
+    public decimal? Lat { get; init; }
 
     [JsonPropertyName("lon")]
-    public decimal Lon { get; init; }
+    public decimal? Lon { get; init; }
 
     [JsonPropertyName("required_personnel")]
-    public int RequiredPersonnel { get; init; }
+    public int? RequiredPersonnel { get; init; }
+
+    [JsonPropertyName("monthly_salary")]
+    public decimal? MonthlySalary { get; init; }
+
+    [JsonPropertyName("years_of_experience_required")]
+    public byte? YearsOfExperienceRequired { get; init; }
+
+    [JsonPropertyName("working_hours_type")]
+    public string? WorkingHoursType { get; init; }
+
+    [JsonPropertyName("working_hours_from")]
+    public string? WorkingHoursFrom { get; init; }
+
+    [JsonPropertyName("working_hours_to")]
+    public string? WorkingHoursTo { get; init; }
+
+    [JsonPropertyName("fees")]
+    public decimal? Fees { get; init; }
+
+    [JsonPropertyName("phone_contact_information")]
+    public string? PhoneContactInformation { get; init; }
+
+    [JsonPropertyName("email_contact_information")]
+    public string? EmailContactInformation { get; init; }
+
+    [JsonPropertyName("establishment_classification")]
+    public IReadOnlyList<string>? EstablishmentClassification { get; init; }
+
+    [JsonPropertyName("gender")]
+    public IReadOnlyList<string>? Gender { get; init; }
+
+    [JsonPropertyName("city_id")]
+    public Guid? CityId { get; init; }
+
+    [JsonPropertyName("nationality_id")]
+    public Guid? NationalityId { get; init; }
+}
+
+/// <summary>
+/// One item inside the legacy bulk <c>opportunities[]</c> array.
+/// Mirrors the per-item field set from Laravel
+/// <c>StoreOpportunityRequest</c> with both <c>_id</c> and <c>_uuid</c>
+/// aliases on category.
+/// </summary>
+public sealed class CreateOpportunityItem
+{
+    [JsonPropertyName("opportunity_category_id")]
+    public Guid? OpportunityCategoryId { get; init; }
+
+    [JsonPropertyName("opportunity_category_uuid")]
+    public Guid? OpportunityCategoryUuid { get; init; }
+
+    public Guid? ResolvedCategoryId() => OpportunityCategoryId ?? OpportunityCategoryUuid;
+
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("start_date")]
+    public DateOnly? StartDate { get; init; }
+
+    [JsonPropertyName("end_date")]
+    public DateOnly? EndDate { get; init; }
+
+    [JsonPropertyName("location_title")]
+    public string? LocationTitle { get; init; }
+
+    [JsonPropertyName("lat")]
+    public decimal? Lat { get; init; }
+
+    [JsonPropertyName("lon")]
+    public decimal? Lon { get; init; }
+
+    [JsonPropertyName("required_personnel")]
+    public int? RequiredPersonnel { get; init; }
 
     [JsonPropertyName("monthly_salary")]
     public decimal? MonthlySalary { get; init; }
@@ -288,20 +625,35 @@ public sealed class CreateOpportunityRequestValidator : Validator<CreateOpportun
 {
     public CreateOpportunityRequestValidator()
     {
-        RuleFor(x => x.EventId).NotEmpty();
-        RuleFor(x => x.OpportunityCategoryId).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(120);
-        RuleFor(x => x.Description).NotEmpty().MinimumLength(10).MaximumLength(3000);
-        RuleFor(x => x.LocationTitle).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.RequiredPersonnel).GreaterThanOrEqualTo(1).LessThanOrEqualTo(1_000_000);
-        RuleFor(x => x.Lat).InclusiveBetween(-90m, 90m);
-        RuleFor(x => x.Lon).InclusiveBetween(-180m, 180m);
+        // Only validate top-level fields when the bulk array is NOT
+        // present. The handler does per-item validation on the bulk
+        // path, so FluentValidation stays out of the way there.
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(120)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.Description).NotEmpty().MinimumLength(10).MaximumLength(3000)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.LocationTitle).NotEmpty().MaximumLength(200)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.RequiredPersonnel)
+            .NotNull()
+            .GreaterThanOrEqualTo(1).LessThanOrEqualTo(1_000_000)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.Lat)
+            .NotNull()
+            .InclusiveBetween(-90m, 90m)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.Lon)
+            .NotNull()
+            .InclusiveBetween(-180m, 180m)
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.StartDate).NotNull()
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
+        RuleFor(x => x.EndDate).NotNull()
+            .When(x => x.Opportunities is null || x.Opportunities.Count == 0);
         RuleFor(x => x.MonthlySalary).GreaterThanOrEqualTo(0).When(x => x.MonthlySalary.HasValue);
         RuleFor(x => x.Fees).GreaterThanOrEqualTo(0).When(x => x.Fees.HasValue);
         RuleFor(x => x.YearsOfExperienceRequired)
             .LessThanOrEqualTo((byte)100).When(x => x.YearsOfExperienceRequired.HasValue);
-        RuleFor(x => x.EndDate).GreaterThanOrEqualTo(x => x.StartDate)
-            .WithMessage("end_date must be on or after start_date.");
         RuleFor(x => x.EmailContactInformation)
             .EmailAddress().When(x => !string.IsNullOrEmpty(x.EmailContactInformation));
     }
