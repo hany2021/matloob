@@ -94,46 +94,31 @@ public sealed class GetMeProfileEndpoint
 
         var sub = _currentUser.UserId;
 
-        Guid? explicitId = TryReadExplicitEstablishmentId();
+        // Use the shared resolver so the X-Commissioner-UUID alias and
+        // the canonical X-Establishment-Id / ?establishment_id chain
+        // stay in sync across every legacy endpoint.
+        var result = await EstablishmentContextResolver.ResolveAsync(
+            HttpContext, _db, sub, ct);
+
         Guid resolvedId;
-
-        if (explicitId is { } explicitGuid)
+        switch (result.Outcome)
         {
-            resolvedId = explicitGuid;
-        }
-        else
-        {
-            // Auto-resolve: exactly one active membership in a readable
-            // (Approved/Suspended) establishment. If the caller has zero
-            // memberships -> 404 (no context). If they have several -> 400
-            // so the frontend renders a picker.
-            var candidateIds = await _db.EstablishmentMembers
-                .AsNoTracking()
-                .Where(m => m.UserId == sub && m.IsActive)
-                .Join(_db.Establishments.AsNoTracking(),
-                    m => m.EstablishmentId, e => e.Id,
-                    (m, e) => new { e.Id, e.Status })
-                .Where(x => x.Status == EstablishmentStatus.Approved
-                         || x.Status == EstablishmentStatus.Suspended)
-                .Select(x => x.Id)
-                .Take(2)
-                .ToListAsync(ct);
-
-            if (candidateIds.Count == 0)
-            {
+            case EstablishmentContextOutcome.Resolved:
+                resolvedId = result.EstablishmentId;
+                break;
+            case EstablishmentContextOutcome.NotFound:
                 await Send.NotFoundAsync(ct);
                 return;
-            }
-            if (candidateIds.Count > 1)
-            {
+            case EstablishmentContextOutcome.Ambiguous:
                 await WriteProblemAsync(
                     StatusCodes.Status400BadRequest,
                     "establishment_context_required",
                     "The caller is a member of multiple establishments. Specify ?establishment_id={guid} or the X-Establishment-Id header.",
                     ct);
                 return;
-            }
-            resolvedId = candidateIds[0];
+            default:
+                await Send.NotFoundAsync(ct);
+                return;
         }
 
         var establishment = await _db.Establishments
@@ -161,23 +146,6 @@ public sealed class GetMeProfileEndpoint
 
         var response = BuildResponse(establishment);
         await Send.OkAsync(response, ct);
-    }
-
-    private Guid? TryReadExplicitEstablishmentId()
-    {
-        // Query param first.
-        if (HttpContext.Request.Query.TryGetValue(EstablishmentIdQueryKey, out var qsValue)
-            && Guid.TryParse(qsValue.ToString(), out var fromQuery))
-        {
-            return fromQuery;
-        }
-        // Then header.
-        if (HttpContext.Request.Headers.TryGetValue(EstablishmentIdHeader, out var hdrValue)
-            && Guid.TryParse(hdrValue.ToString(), out var fromHeader))
-        {
-            return fromHeader;
-        }
-        return null;
     }
 
     private static EstablishmentMeProfileResponse BuildResponse(Establishment e)
