@@ -489,6 +489,20 @@ Three options, in suggested order:
 
 ---
 
+## 16. Legacy request-body compatibility audit & fixes (2026-05-23)
+
+After OAO-9 a follow-up audit found five legacy request-shape gaps that the previous URL/response-shape work missed. All five were fixed before any new feature work resumed. The detailed audit + fix breakdown lives in [41-legacy-request-compatibility.md](41-legacy-request-compatibility.md). Short version:
+
+- `POST /api/establishments/me/opportunities` now accepts BOTH the legacy bulk shape (`{event_uuid, opportunities:[…]}`) AND the canonical single-object shape. Returns array or single accordingly.
+- `POST /api/establishments/offers/{id}/reject` accepts a bare POST (Laravel parity) in addition to the canonical body.
+- `POST /api/establishments/evaluations` accepts `multipart/form-data` with `uploads[]` files in addition to JSON.
+- `EstablishmentContextResolver` honors `X-Commissioner-UUID` as a legacy establishment-id alias.
+- Final test count: **359 / 359 passing** across 5 new commits + 5 new test files.
+
+After this audit the legacy frontend can call every migrated endpoint without URL OR request-body changes.
+
+---
+
 ### Recommended next prompt
 
 **"Notifications HTTP routes migration — Phase NOTIF-1"**
