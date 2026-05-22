@@ -54,6 +54,20 @@ internal static class UniqueConstraintTranslator
                 EstablishmentErrorCodes.ChangeRequestAlreadyExists,
                 "An in-flight ChangeRequest (Draft or PendingReview) already exists for this establishment."),
 
+            // OAO partial-unique indexes — see
+            // OpportunityApplicationConfiguration / OfferCancellationRequestConfiguration.
+            "ux_opportunity_applications_user_active" => new Conflict(
+                Matloob.Api.Features.Opportunities.Common.OpportunityErrorCodes.ApplicationAlreadyExists,
+                "You have already applied to this opportunity."),
+
+            "ux_opportunity_applications_establishment_active" => new Conflict(
+                Matloob.Api.Features.Opportunities.Common.OpportunityErrorCodes.ApplicationAlreadyExists,
+                "Establishment has already applied to this opportunity."),
+
+            "ux_offer_cancellation_requests_open_per_offer" => new Conflict(
+                "open_cancellation_request_exists",
+                "Another open cancellation request already exists for this offer."),
+
             _ => null,
         };
     }
