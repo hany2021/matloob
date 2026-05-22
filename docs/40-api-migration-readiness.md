@@ -221,8 +221,66 @@ The new API is canonical under `/api/v1/*`. The public frontend still hits some 
 
 ---
 
+## 11. First migration sprint outcomes (2026-05-22)
+
+This section is appended after the first migration sprint completed groups 1–4 (users/profile compatibility, establishment compatibility, settings/reference, media). Counts in §2–§4 above are pre-sprint; the items below are net new.
+
+### 11.1 Endpoints migrated / aligned
+
+| Endpoint | Disposition | Notes |
+|---|---|---|
+| `GET /api/v1/profile` + `GET /api/users/profile` | aligned | Response refactored to Laravel `UserResource` snake_case shape with the full field set (`id`, `name`, `email`, `id_number`, `gender`, `nationality`, `age`, `date_of_birth`, `hijri_date_of_birth`, `bio`, `phone_number`, `additional_phone_number`, `years_of_experience`, `passport_copy`, `photo`, `professions[]`, `experiences[]`, `certificates[]`, `skills[]`, `education[]`, `city`, `region`, `bank_account`, `languages[]`, `supportive_documents[]`, `participations[]`, `profile_complete_percentage`, `evaluations[]`, `reviews[]`, `rate`, `total_reviews`, `onboarded`, `uncompleted_profile_sections[]`). Unmigrated relations land as `null`/`[]`/`0`. `identity_id` is a new-client extension. |
+| `GET /api/users/profile/establishment-list` + `GET /api/v1/users/profile/establishment-list` | aligned | Snake_case Laravel `EstablishmentResource` shape (`id`, `name`, `type`, `logo`, `labor_office_id`, `sequence_number`). `status` + `role` are new-client extensions. |
+| `GET /api/establishments/me/profile` + `GET /api/v1/establishments/me/profile` | **new** legacy alias | Returns the Laravel composite `EstablishmentResource + ProfileResource` shape. Establishment resolves from `?establishment_id={guid}` → `X-Establishment-Id` header → single-active-membership auto-pick. Ambiguous → 400 `establishment_context_required`. No membership → 404. |
+
+### 11.2 Legacy aliases now active
+
+- `/api/users/profile` → `/api/v1/profile`
+- `/api/users/profile/establishment-list` → `/api/v1/users/profile/establishment-list`
+- `/api/establishments/me/profile` → `/api/v1/establishments/me/profile`
+- `/api/init-data` → `/api/v1/init-data` (pre-sprint)
+
+### 11.3 Endpoints intentionally NOT shipped this sprint
+
+| Endpoint | Reason | Reopen when |
+|---|---|---|
+| `POST /api/users/logout` | Q-AUTH-1 — IdM end-session URL + `post_logout_redirect_uri` undecided. | Auth team confirms the redirect target. |
+| `PATCH /api/users/profile/personal-info` | Needs `users` schema additions (id_number, gender, dob, …) + nationality/city/region FK lookups. Q-PROFILE-MUTATORS. | Schema decision per field; lookup tables are already present. |
+| `PATCH /api/users/profile/photo` | Q-PF-PHOTO — image type + size cap unset. | Product decision. |
+| `PATCH /api/users/profile/user-education` | Needs `user_education` table + `UpdateOrCreateUserEducationRequest` mapping. | When schema lands. |
+| `PATCH /api/users/profile/languages-skills` | Needs `user_languages` + `user_skills` join tables. | When schema lands. |
+| `PATCH /api/users/profile/user-experiences` | Needs `user_experiences` table. | When schema lands. |
+| `PATCH /api/users/profile/user-certificates` | Needs `user_certificates` table. | When schema lands. |
+| `PATCH /api/users/profile/interest` | Needs `user_professions` join + `UpdateInterestRequest` validation. | When schema lands. |
+| `PATCH /api/users/profile/finish-onboarding` | Needs `users.onboarded` column. | When schema lands. |
+| `PATCH /api/establishments/me/profile/general-info` | Q-EST-1 — Approved establishments must flow through ChangeRequest; behavior of in-place PATCH on Approved is undecided (405 vs auto-CR vs Draft-only). | Product decision. |
+| `PATCH /api/establishments/me/profile/contact-info` | Same as general-info — redesigned to ChangeRequest. | Product decision. |
+| `PATCH /api/establishments/me/profile/logo` | Q-EST-2 — logo bypass-CR rule not confirmed. Also needs `logo_asset_id` column. | Product decision + schema. |
+| `PATCH /api/establishments/me/profile/bank-account` | No `bank_accounts` table in the new system yet. | When schema lands. |
+| `POST/PATCH /api/establishments/me/profile/experience` | No `establishment_experiences` table. | When schema lands. |
+| `GET /api/establishments/contracts-regulations` | Laravel response was Qiwa-derived saudization% + Ajeer-derived contract%. Both data sources removed; nothing meaningful to return. Q-CONTRACTS-REGULATIONS. | Product decides whether to (a) remove entirely, (b) return a static constant, or (c) replace with new business rule. |
+| `POST /api/signed-storage-url` | Marked **redesigned**, not **compatible** — the Laravel pre-sign + PUT flow does not map onto a one-step multipart POST. Asking the public frontend to keep the legacy 2-step flow would require reintroducing S3, which is explicitly forbidden. | Q-PF-5 — coordinate cutover with the public frontend team; no compat shim. |
+
+### 11.4 New open questions discovered
+
+| ID | Question |
+|---|---|
+| Q-EST-CONTEXT | When the caller has 0 or many memberships at `/api/establishments/me/profile`, is auto-pick + 400-on-ambiguity the right behavior? Or should the frontend always send `X-Establishment-Id` / `?establishment_id`? |
+| Q-PROFILE-MUTATORS | Are the 8 user-profile PATCHes still in scope? They imply 6+ new tables (user_education, user_skills, user_languages, user_experiences, user_certificates, user_professions) plus several `users` columns. Confirm the field-by-field schema before next sprint. |
+| Q-CONTRACTS-REGULATIONS | Per §11.3 — does the public frontend still call `/contracts-regulations`? If yes, what should it return now? |
+
+### 11.5 Sprint result summary
+
+- **Commits added** (newest first):
+  - `e55993d` feat(establishments): add /me/profile legacy alias
+  - `481d91e` feat(profile): align response shape with Laravel UserResource
+- **Tests added:** 8 new in `MeProfileCompatibilityTests`; existing 8 in `ProfileCompatibilityTests` updated for snake_case. **Total: 169 passing / 161 before.**
+- **Build:** clean (0 warnings, 0 errors).
+
+---
+
 ### Recommended next prompt
 
-**"Old Laravel API migration sprint"**
+**"Opportunities / Applicants / Offers migration"**
 
-Scope: walk routes/users.php and routes/establishments.php in the order from §7, register canonical + legacy URLs on each new endpoint per §8, ship tests per slice, leave §6 items in their respective endpoints as `// TODO Q-<id>` until the product decision lands.
+Scope: walk routes/users.php + routes/establishments.php for the Opportunities + Applications + Offers slices (≈48 endpoints). Strip every `ajeer_*` and `contract_*` field per [25-ajeer-disposition.md](25-ajeer-disposition.md). Decide on `Q-OPP-1`, `Q-OFFER-1`, `Q-OFFER-2`, `Q-EVAL-1` before starting each respective sub-batch — those four are the only blockers between the new aggregates and the rest of the route migration. Profile mutators + logout + contracts-regulations remain blocked on Q-PROFILE-MUTATORS / Q-AUTH-1 / Q-CONTRACTS-REGULATIONS and should not be revisited until those decisions land.
