@@ -279,8 +279,94 @@ This section is appended after the first migration sprint completed groups 1–4
 
 ---
 
+## 12. Phase OAO-1 outcomes (2026-05-22)
+
+Domain + persistence foundation for Opportunities / Applications / Offers / Evaluations is in place. No endpoints.
+
+- **Aggregates added:** `Opportunity`, `OpportunityApplication`, `Offer`, `Evaluation` plus side tables (`OpportunityAsset`, `SuccessManagementCriterion(+Asset)`, `OfferCancellationRequest`, `EvaluationAsset`).
+- **Migrations:** `OpportunitiesInitial`, `ApplicationsInitial`, `OffersInitial`, `EvaluationsInitial`.
+- **Ajeer-stripped from day one:** no `ajeer_*` columns, no `Contracts` / `Invoices` tables, evaluations reference `OfferId` not `contract_id`. Sponsor flow kept as internal-only status machine.
+- **DB-only constraints:** CHECK constraints on the split-FK pairs (application applicant, cancellation requester, evaluation evaluable/evaluator) plus partial-unique indexes for "one application per pair" and "one open cancellation per offer."
+- **Tests:** +49 domain + persistence-shape tests under `tests/Matloob.Api.Tests/Oao/`; final test count 218.
+
+## 13. Phase OAO-2 outcomes (2026-05-22) — read endpoints
+
+Read-only endpoints for Opportunities + Applications + the establishment-side application reads. No write endpoints; no Offer / Evaluation / Notification endpoints.
+
+### 13.1 Endpoints shipped
+
+Every endpoint is registered at both the legacy Laravel URL and a canonical `/api/v1/...` URL.
+
+| Slice | Legacy URL | Canonical URL |
+|---|---|---|
+| User browse list | `GET /api/users/opportunities` | `GET /api/v1/users/opportunities` |
+| User browse show | `GET /api/users/opportunities/{id}` | `GET /api/v1/users/opportunities/{id}` |
+| Establishment browse list | `GET /api/establishments/opportunities` | `GET /api/v1/establishments/{establishmentId}/browse/opportunities` |
+| Establishment browse show | `GET /api/establishments/opportunities/{id}` | `GET /api/v1/establishments/{establishmentId}/browse/opportunities/{id}` |
+| Browse categories | `GET /api/establishments/opportunities/categories` | `GET /api/v1/establishments/{establishmentId}/browse/opportunity-categories` |
+| Owner list | `GET /api/establishments/me/opportunities` | `GET /api/v1/establishments/{establishmentId}/opportunities` |
+| Owner show | `GET /api/establishments/me/opportunities/{id}` | `GET /api/v1/establishments/{establishmentId}/opportunities/{id}` |
+| User applications list | `GET /api/users/opportunities/applications` | `GET /api/v1/users/opportunities/applications` |
+| User application show | `GET /api/users/opportunities/applications/{applicantId}` | `GET /api/v1/users/opportunities/applications/{applicantId}` |
+| Estab. browse applications list | `GET /api/establishments/opportunities/applications` | `GET /api/v1/establishments/{establishmentId}/browse/applications` |
+| Estab. browse application show | `GET /api/establishments/opportunities/applications/{applicantId}` | `GET /api/v1/establishments/{establishmentId}/browse/applications/{applicantId}` |
+| Own-opportunity applicants list | `GET /api/establishments/me/opportunities/{id}/applications` | `GET /api/v1/establishments/{establishmentId}/opportunities/{id}/applications` |
+| Own-opportunity applicant show | `GET /api/establishments/me/applicants/{applicantId}` | `GET /api/v1/establishments/{establishmentId}/applicants/{applicantId}` |
+
+### 13.2 Compatibility notes
+
+- **Snake_case throughout** via `[JsonPropertyName]`. Field set matches the Laravel `OpportunityResource` / `OpportunityApplicationResource` 1:1 with the exceptions below.
+- **Dropped fields:** `contracts_count` (no Contracts), nested `contract` object (no Contracts), `contract_path` / `notice_path` / `show_print_notice` (only on the Offer slice in OAO-5; mentioned here for completeness).
+- **Placeholder fields** (null / [] / 0 until the matching slice migrates): `event` (Event slice not landed), `nationality` (minimal projection only — full nationality resource on the worker profile side), `status_label` / `card_type` / `status_icon` / `gender_label` / `establishment_classification_label` (i18n hook deferred), `success_criteria.uploads` (criterion assets shipped but media URLs not), `issuer.logo`.
+- **`establishment_classification` + `gender`:** emitted as arrays (`["small", "medium"]`) matching the Laravel model accessor that exploded the legacy CSV column.
+- **`is_applied`:** computed for the current principal — the worker's sub on the user endpoints; the resolved establishment on the establishment-side endpoints.
+- **Establishment context resolution (legacy routes):** new shared `EstablishmentContextHelper` handles `?establishment_id` → `X-Establishment-Id` → single-active-membership auto-pick. Ambiguous returns 400 with code `establishment_context_required`. No membership returns 404. Canonical routes read the id from the URL path.
+
+### 13.3 Application status derivation
+
+Mirrors `ApplicantSupport::getApplicationStatus`: an application's `status` is `accepted` when any `Offer` row exists for that `application_id`, otherwise `pending`. `status_label` is reserved for the future localisation pass.
+
+### 13.4 Open question resolved in this sprint
+
+| ID | Question | Default applied |
+|---|---|---|
+| Q-OAO-GROUPED-RESPONSE | Laravel `GroupedOpportunityResource` returned the owner-list grouped by status. Do we mirror? | **No** — owner list emits a flat array; clients group client-side from the `status` field. Matches the established Laravel-compat shape (snake_case array of full resources) and keeps the wire shape uniform across owner + browse + user-side. |
+
+### 13.5 Sprint result summary
+
+- **Commits added (oldest → newest):**
+  1. `242f4c2` feat(opportunities): add shared opportunity response DTOs
+  2. `acf5df3` feat(opportunities): add user opportunity browse endpoints
+  3. `514c451` feat(opportunities): add establishment browse endpoints
+  4. `dbcb08d` feat(opportunities): add owner opportunity read endpoints
+  5. `7c04ca5` feat(applications): add application read response DTOs
+  6. `9c4d988` feat(applications): add user application read endpoints
+  7. `e219c78` feat(applications): add establishment application read endpoints
+  8. `4727f7f` test(opportunities): add opportunity read compatibility tests
+- **Tests added:** 60 (across `UserOpportunityBrowseTests`, `EstablishmentBrowseTests`, `MineOpportunityTests`, `UserApplicationReadTests`, `EstablishmentApplicationReadTests`, `OaoReadCompatibilitySweepTests`). **Total: 278 passing / 218 before.**
+- **Build:** clean (0 warnings, 0 errors).
+
+### 13.6 Gaps / TODOs
+
+- Event slice not migrated → `opportunity.event` is null. When Events land the FK on `opportunities.event_id` activates, the nested object hydrates, and the `byApplicableEvent()` Laravel filter can be ported.
+- Nationality / region / city full resources deferred → minimal `{id, name}` projection for now.
+- `?season` and `?recommended` query filters on the user browse defer until the Events / personalisation slices land.
+- Issuer logo and opportunity upload URLs ship as null / asset GUIDs; signed-URL surfacing arrives with the asset-download cleanup.
+
+## 14. Remaining OAO phases
+
+| Phase | Scope | Blockers |
+|---|---|---|
+| OAO-3 | Opportunity writes: create / update / delete / end + asset link | None for the writes themselves; Q-OPP-MEDIA defaults to the existing Assets API link pattern. |
+| OAO-4 | Apply endpoints + application detail-load expansion | Q-OPP-APPLY-PROFILE-GATE — default (b) drop the profile-complete gate. Reintroduce when Q-PROFILE-MUTATORS lands. |
+| OAO-5 | Offer reads + writes + sponsor + cancellation two-step + outbox emission | Q-OFFER-1, Q-OFFER-2, Q-SPONSOR-KEEP, Q-OFFER-CONTRACT-TYPE — defaults already locked in OAO-1 schema. |
+| OAO-6 | Evaluation reads + writes | Q-EVAL-1 — locked to `offer_id`. |
+| OAO-7 | Notifications HTTP routes | Q-NOTIF-TRANSPORT. |
+
+---
+
 ### Recommended next prompt
 
-**"Opportunities / Applicants / Offers migration"**
+**"Implement Opportunities migration — Phase OAO-3 write endpoints"**
 
-Scope: walk routes/users.php + routes/establishments.php for the Opportunities + Applications + Offers slices (≈48 endpoints). Strip every `ajeer_*` and `contract_*` field per [25-ajeer-disposition.md](25-ajeer-disposition.md). Decide on `Q-OPP-1`, `Q-OFFER-1`, `Q-OFFER-2`, `Q-EVAL-1` before starting each respective sub-batch — those four are the only blockers between the new aggregates and the rest of the route migration. Profile mutators + logout + contracts-regulations remain blocked on Q-PROFILE-MUTATORS / Q-AUTH-1 / Q-CONTRACTS-REGULATIONS and should not be revisited until those decisions land.
+Scope: opportunity create / update / delete / end + opportunity asset link. Strictly no apply / no offers / no evaluations / no notifications. Tests per slice. Keep Laravel-shape responses returning the same `OpportunityResponse` DTO already shipped in OAO-2. Build + test after every commit. Stop and report at the end of OAO-3.
