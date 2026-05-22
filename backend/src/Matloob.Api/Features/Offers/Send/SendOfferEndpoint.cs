@@ -1,0 +1,297 @@
+using System.Text.Json.Serialization;
+using FastEndpoints;
+using FluentValidation;
+using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Features.Offers.Common;
+using Matloob.Api.Features.Offers.Reads;
+using Matloob.Api.Features.Opportunities.Common;
+using Matloob.Api.Infrastructure.Auth;
+using Matloob.Api.Infrastructure.Events;
+using Matloob.Api.Infrastructure.Identity;
+using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Domain.Offers;
+using Microsoft.EntityFrameworkCore;
+
+namespace Matloob.Api.Features.Offers.Send;
+
+/// <summary>
+/// <c>POST /api/establishments/offers/send</c> +
+/// <c>POST /api/v1/establishments/{establishmentId}/offers/send</c> —
+/// the resolved establishment sends an offer to one of the applicants
+/// on an opportunity it issued.
+///
+/// <para>
+/// Rules (Laravel <c>SendOfferRequest</c> minus Ajeer):
+/// </para>
+/// <list type="bullet">
+///   <item>Applicant must exist + belong to an opportunity issued by
+///     the sender establishment.</item>
+///   <item>No offer can already exist for the (applicant) pair.</item>
+///   <item>Validity window: <c>offer_validity_from &lt; offer_validity_to</c>.</item>
+///   <item>Date window: <c>end_date &gt;= start_date</c>.</item>
+///   <item>If <c>sponsor_id</c> is set the offer starts in
+///     <see cref="OfferStatus.PendingSponsorApproval"/>; otherwise
+///     <see cref="OfferStatus.Pending"/>.</item>
+///   <item>Suspended establishment blocked (423).</item>
+/// </list>
+/// </summary>
+public sealed class SendOfferEndpoint
+    : Endpoint<SendOfferRequest, OfferResponse>
+{
+    private readonly AppDbContext _db;
+    private readonly ICurrentUser _currentUser;
+    private readonly TimeProvider _clock;
+    private readonly IOutboxWriter _outbox;
+
+    public SendOfferEndpoint(
+        AppDbContext db,
+        ICurrentUser currentUser,
+        TimeProvider clock,
+        IOutboxWriter outbox)
+    {
+        _db = db;
+        _currentUser = currentUser;
+        _clock = clock;
+        _outbox = outbox;
+    }
+
+    public override void Configure()
+    {
+        Post(
+            "/api/establishments/offers/send",
+            "/api/v1/establishments/{establishmentId}/offers/send");
+        Policies(MatloobPolicies.User);
+        Description(b => b
+            .Produces<OfferResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status423Locked)
+            .WithTags("Offers"));
+        Summary(s => s.Summary = "Send an offer to an applicant on one of the establishment's opportunities.");
+    }
+
+    public override async Task HandleAsync(SendOfferRequest req, CancellationToken ct)
+    {
+        var sub = _currentUser.UserId;
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(
+            _db, HttpContext, sub, ct);
+        if (establishmentId is null) return;
+
+        var application = await _db.OpportunityApplications
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == req.ApplicantId, ct);
+        if (application is null)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                OfferErrorCodes.ApplicantNotFound,
+                "Applicant does not exist.",
+                ct);
+            return;
+        }
+
+        var opportunity = await _db.Opportunities
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == application.OpportunityId, ct);
+        if (opportunity is null
+            || opportunity.IssuerEstablishmentId != establishmentId.Value)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                OfferErrorCodes.ApplicantNotVisible,
+                "Applicant does not belong to one of your opportunities.",
+                ct);
+            return;
+        }
+
+        // One offer per applicant.
+        var alreadySent = await _db.Offers
+            .AsNoTracking()
+            .AnyAsync(o => o.ApplicationId == application.Id, ct);
+        if (alreadySent)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status409Conflict,
+                OfferErrorCodes.OfferAlreadyExists,
+                "An offer has already been sent for this applicant.",
+                ct);
+            return;
+        }
+
+        // Sponsor existence + eligibility (if set).
+        if (req.SponsorId is { } sponsorId)
+        {
+            var sponsor = await _db.Establishments
+                .AsNoTracking()
+                .Where(e => e.Id == sponsorId)
+                .Select(e => new { e.Id, e.IsSponsor })
+                .FirstOrDefaultAsync(ct);
+            if (sponsor is null)
+            {
+                await ProblemWriter.WriteAsync(
+                    HttpContext,
+                    StatusCodes.Status422UnprocessableEntity,
+                    OfferErrorCodes.SponsorNotFound,
+                    "Sponsor establishment does not exist.",
+                    ct);
+                return;
+            }
+            if (!sponsor.IsSponsor)
+            {
+                await ProblemWriter.WriteAsync(
+                    HttpContext,
+                    StatusCodes.Status422UnprocessableEntity,
+                    OfferErrorCodes.SponsorNotEligible,
+                    "Establishment is not marked as a sponsor.",
+                    ct);
+                return;
+            }
+        }
+
+        var now = _clock.GetUtcNow();
+        Offer offer;
+        try
+        {
+            offer = Offer.Create(
+                id: Guid.NewGuid(),
+                senderEstablishmentId: establishmentId.Value,
+                opportunityId: opportunity.Id,
+                applicationId: application.Id,
+                sentByUserId: sub,
+                offerValidityFrom: req.OfferValidityFrom ?? now,
+                offerValidityTo: req.OfferValidityTo ?? now.AddDays(30),
+                startDate: req.StartDate ?? DateOnly.FromDateTime(now.AddDays(31).UtcDateTime),
+                endDate: req.EndDate ?? DateOnly.FromDateTime(now.AddDays(40).UtcDateTime),
+                monthlySalary: req.MonthlySalary ?? 0m,
+                jobTitleId: req.JobTitleId,
+                jobTitleCategoryId: req.JobTitleCategoryId,
+                sponsorEstablishmentId: req.SponsorId,
+                appliedByUserId: application.AppliedByUserId,
+                dailyWage: req.DailyWage,
+                numberOfWorkingDays: req.NumberOfWorkingDays,
+                laborerCommitments: req.LaborerCommitments,
+                otherDetails: req.OtherDetails);
+        }
+        catch (ArgumentException ex)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                OfferErrorCodes.InvalidStatusTransition,
+                ex.Message,
+                ct);
+            return;
+        }
+
+        _db.Offers.Add(offer);
+
+        _outbox.Enqueue(
+            OfferEventTypes.Created,
+            aggregateType: nameof(Offer),
+            aggregateId: offer.Id,
+            payload: new
+            {
+                id = offer.Id,
+                senderEstablishmentId = offer.SenderEstablishmentId,
+                opportunityId = offer.OpportunityId,
+                applicationId = offer.ApplicationId,
+                sponsorEstablishmentId = offer.SponsorEstablishmentId,
+                status = offer.Status.ToString(),
+                sentAt = now,
+                sentByUserId = sub,
+            });
+        if (offer.Status == OfferStatus.PendingSponsorApproval)
+        {
+            _outbox.Enqueue(
+                OfferEventTypes.SponsorApprovalPending,
+                aggregateType: nameof(Offer),
+                aggregateId: offer.Id,
+                payload: new
+                {
+                    id = offer.Id,
+                    sponsorEstablishmentId = offer.SponsorEstablishmentId,
+                });
+        }
+        _outbox.Flush();
+
+        await _db.SaveChangesAsync(ct);
+
+        var response = await OfferReadMapper.MapAsync(_db, offer, now, ct);
+        HttpContext.Response.Headers.Location =
+            $"/api/v1/establishments/{establishmentId.Value}/sent-offers/{offer.Id}";
+        await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
+    }
+}
+
+public sealed class SendOfferRequest
+{
+    [JsonPropertyName("applicant_id")]
+    public Guid ApplicantId { get; init; }
+
+    [JsonPropertyName("job_title_id")]
+    public Guid? JobTitleId { get; init; }
+
+    [JsonPropertyName("job_title_category_id")]
+    public Guid? JobTitleCategoryId { get; init; }
+
+    [JsonPropertyName("sponsor_id")]
+    public Guid? SponsorId { get; init; }
+
+    [JsonPropertyName("daily_wage")]
+    public int? DailyWage { get; init; }
+
+    [JsonPropertyName("number_of_working_days")]
+    public int? NumberOfWorkingDays { get; init; }
+
+    [JsonPropertyName("monthly_salary")]
+    public decimal? MonthlySalary { get; init; }
+
+    [JsonPropertyName("currency")]
+    public string? Currency { get; init; }
+
+    [JsonPropertyName("offer_validity_from")]
+    public DateTimeOffset? OfferValidityFrom { get; init; }
+
+    [JsonPropertyName("offer_validity_to")]
+    public DateTimeOffset? OfferValidityTo { get; init; }
+
+    [JsonPropertyName("laborer_commitments")]
+    public string? LaborerCommitments { get; init; }
+
+    [JsonPropertyName("start_date")]
+    public DateOnly? StartDate { get; init; }
+
+    [JsonPropertyName("end_date")]
+    public DateOnly? EndDate { get; init; }
+
+    [JsonPropertyName("other_details")]
+    public string? OtherDetails { get; init; }
+}
+
+public sealed class SendOfferRequestValidator : Validator<SendOfferRequest>
+{
+    public SendOfferRequestValidator()
+    {
+        RuleFor(x => x.ApplicantId).NotEmpty();
+        RuleFor(x => x.MonthlySalary).GreaterThanOrEqualTo(0)
+            .When(x => x.MonthlySalary.HasValue);
+        RuleFor(x => x.DailyWage).GreaterThanOrEqualTo(0)
+            .When(x => x.DailyWage.HasValue);
+        RuleFor(x => x.NumberOfWorkingDays).GreaterThanOrEqualTo(0)
+            .When(x => x.NumberOfWorkingDays.HasValue);
+        RuleFor(x => x).Must(x =>
+                !(x.OfferValidityFrom.HasValue && x.OfferValidityTo.HasValue)
+                || x.OfferValidityTo!.Value > x.OfferValidityFrom!.Value)
+            .WithMessage("offer_validity_to must be after offer_validity_from.");
+        RuleFor(x => x).Must(x =>
+                !(x.StartDate.HasValue && x.EndDate.HasValue)
+                || x.EndDate!.Value >= x.StartDate!.Value)
+            .WithMessage("end_date must be on or after start_date.");
+    }
+}
