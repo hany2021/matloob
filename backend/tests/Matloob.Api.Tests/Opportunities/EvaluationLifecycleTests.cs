@@ -1,0 +1,198 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Tests.Auth;
+using Matloob.Domain.Offers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Matloob.Api.Tests.Opportunities;
+
+public sealed class EvaluationLifecycleTests
+    : IClassFixture<OpportunitiesApiFactory>, IAsyncLifetime
+{
+    private readonly OpportunitiesApiFactory _factory;
+    private Guid _senderEstablishment;
+    private Guid _opportunityId;
+    private Guid _applicationId;
+    private Guid _offerId;
+
+    public EvaluationLifecycleTests(OpportunitiesApiFactory factory)
+    {
+        _factory = factory;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await OaoHelpers.SeedLocalUserAsync(_factory, OaoHelpers.Worker.Sub);
+        await OaoHelpers.SeedLocalUserAsync(_factory, OaoHelpers.EstablishmentOwner.Sub);
+
+        _senderEstablishment = await OaoHelpers.SeedApprovedEstablishmentAsync(
+            _factory, OaoHelpers.EstablishmentOwner.Sub, "CR-OAO-EVAL");
+        _opportunityId = await OaoHelpers.SeedOpportunityAsync(
+            _factory, _senderEstablishment,
+            name: "Eval opp", forVacancy: true);
+        _applicationId = await OaoHelpers.SeedApplicationAsync(
+            _factory, _opportunityId,
+            applicantUserId: OaoHelpers.Worker.Sub);
+        _offerId = await OaoHelpers.SeedOfferAsync(
+            _factory, _senderEstablishment, _opportunityId, _applicationId,
+            sentByUserId: OaoHelpers.EstablishmentOwner.Sub,
+            status: OfferStatus.Accepted,
+            acceptedAt: DateTimeOffset.UtcNow);
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task UserCreate_HappyPath_Returns201()
+    {
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.PostAsJsonAsync("/api/v1/users/evaluations",
+            new
+            {
+                offer_id = _offerId,
+                rating = 5,
+                recommend_for_future_opportunities = true,
+                comment = "great experience",
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.Equal(_offerId, doc.RootElement.GetProperty("offer_id").GetGuid());
+        Assert.Equal("user", doc.RootElement.GetProperty("evaluator").GetProperty("type").GetString());
+        Assert.Equal("organization", doc.RootElement.GetProperty("evaluable").GetProperty("type").GetString());
+        // No "contract" field anywhere.
+        Assert.False(doc.RootElement.TryGetProperty("contract", out _));
+    }
+
+    [Fact]
+    public async Task UserCreate_Duplicate_Returns409()
+    {
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var body = new
+        {
+            offer_id = _offerId,
+            rating = 5,
+            recommend_for_future_opportunities = true,
+        };
+        var first = await client.PostAsJsonAsync("/api/v1/users/evaluations", body);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        var second = await client.PostAsJsonAsync("/api/v1/users/evaluations", body);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task UserCreate_OfferNotEvaluable_Returns422()
+    {
+        // Offer in Pending state isn't evaluable.
+        var pendingOffer = await OaoHelpers.SeedOfferAsync(
+            _factory, _senderEstablishment, _opportunityId, _applicationId,
+            sentByUserId: OaoHelpers.EstablishmentOwner.Sub,
+            status: OfferStatus.Pending);
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.PostAsJsonAsync("/api/v1/users/evaluations",
+            new
+            {
+                offer_id = pendingOffer,
+                rating = 3,
+                recommend_for_future_opportunities = false,
+            });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BothSides_Evaluate_OfferBecomesCompleted()
+    {
+        // Worker evaluates first.
+        await _factory.CreateClientFor(OaoHelpers.Worker).PostAsJsonAsync(
+            "/api/v1/users/evaluations",
+            new
+            {
+                offer_id = _offerId,
+                rating = 5,
+                recommend_for_future_opportunities = true,
+            });
+
+        // Establishment evaluates second.
+        var response = await _factory.CreateClientFor(OaoHelpers.EstablishmentOwner)
+            .PostAsJsonAsync(
+                $"/api/v1/establishments/{_senderEstablishment}/evaluations",
+                new
+                {
+                    offer_id = _offerId,
+                    rating = 5,
+                    recommend_for_future_opportunities = true,
+                });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var offer = await OaoHelpers.LoadOfferAsync(_factory, _offerId);
+        Assert.Equal(OfferStatus.Completed, offer!.Status);
+    }
+
+    [Fact]
+    public async Task OtherEvaluation_NotEvaluatedYourself_Returns422()
+    {
+        // The establishment evaluates but the worker has not.
+        await _factory.CreateClientFor(OaoHelpers.EstablishmentOwner)
+            .PostAsJsonAsync(
+                $"/api/v1/establishments/{_senderEstablishment}/evaluations",
+                new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        var response = await _factory.CreateClientFor(OaoHelpers.Worker)
+            .GetAsync($"/api/v1/users/offers/{_offerId}/other-evaluation");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OtherEvaluation_AfterBothEvaluated_Returns200()
+    {
+        await _factory.CreateClientFor(OaoHelpers.Worker)
+            .PostAsJsonAsync("/api/v1/users/evaluations",
+                new { offer_id = _offerId, rating = 4, recommend_for_future_opportunities = true });
+        await _factory.CreateClientFor(OaoHelpers.EstablishmentOwner)
+            .PostAsJsonAsync(
+                $"/api/v1/establishments/{_senderEstablishment}/evaluations",
+                new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        // Worker sees the establishment's evaluation.
+        var response = await _factory.CreateClientFor(OaoHelpers.Worker)
+            .GetAsync($"/api/v1/users/offers/{_offerId}/other-evaluation");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.Equal("organization", doc.RootElement.GetProperty("evaluator").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task Unevaluated_ShowsAcceptedOffersAwaitingEvaluation()
+    {
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.GetAsync("/api/v1/users/offers/unevaluated");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.Contains(doc.RootElement.EnumerateArray(),
+            e => e.GetProperty("id").GetGuid() == _offerId);
+    }
+
+    [Fact]
+    public async Task Unevaluated_HidesAfterUserEvaluates()
+    {
+        // Worker evaluates the offer.
+        await _factory.CreateClientFor(OaoHelpers.Worker)
+            .PostAsJsonAsync("/api/v1/users/evaluations",
+                new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        var response = await _factory.CreateClientFor(OaoHelpers.Worker)
+            .GetAsync("/api/v1/users/offers/unevaluated");
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+            e => e.GetProperty("id").GetGuid() == _offerId);
+    }
+}
