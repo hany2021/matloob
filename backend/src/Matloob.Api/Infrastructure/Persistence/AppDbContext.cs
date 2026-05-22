@@ -5,6 +5,7 @@ using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Events;
+using Matloob.Domain.Offers;
 using Matloob.Domain.Opportunities;
 using Matloob.Domain.Reference;
 using Matloob.Domain.Users;
@@ -76,6 +77,11 @@ public sealed class AppDbContext : DbContext
     // Applications to opportunities (both worker-side and establishment-side).
     public DbSet<OpportunityApplication> OpportunityApplications
         => Set<OpportunityApplication>();
+
+    // Offers + their cancellation-request child rows.
+    public DbSet<Offer> Offers => Set<Offer>();
+    public DbSet<OfferCancellationRequest> OfferCancellationRequests
+        => Set<OfferCancellationRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
