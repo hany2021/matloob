@@ -353,20 +353,144 @@ Mirrors `ApplicantSupport::getApplicationStatus`: an application's `status` is `
 - `?season` and `?recommended` query filters on the user browse defer until the Events / personalisation slices land.
 - Issuer logo and opportunity upload URLs ship as null / asset GUIDs; signed-URL surfacing arrives with the asset-download cleanup.
 
-## 14. Remaining OAO phases
+## 14. Phases OAO-3 → OAO-7 outcomes (2026-05-23) — full OAO write coverage
 
-| Phase | Scope | Blockers |
-|---|---|---|
-| OAO-3 | Opportunity writes: create / update / delete / end + asset link | None for the writes themselves; Q-OPP-MEDIA defaults to the existing Assets API link pattern. |
-| OAO-4 | Apply endpoints + application detail-load expansion | Q-OPP-APPLY-PROFILE-GATE — default (b) drop the profile-complete gate. Reintroduce when Q-PROFILE-MUTATORS lands. |
-| OAO-5 | Offer reads + writes + sponsor + cancellation two-step + outbox emission | Q-OFFER-1, Q-OFFER-2, Q-SPONSOR-KEEP, Q-OFFER-CONTRACT-TYPE — defaults already locked in OAO-1 schema. |
-| OAO-6 | Evaluation reads + writes | Q-EVAL-1 — locked to `offer_id`. |
-| OAO-7 | Notifications HTTP routes | Q-NOTIF-TRANSPORT. |
+OAO write endpoints + offer lifecycle + evaluations + outbox emission. Test count rose from 278 → 328 over OAO-3/4/5/6, with OAO-9 adding more on top (see §16).
+
+### 14.1 Endpoints shipped
+
+**OAO-3 (Opportunity writes — owner-side):**
+- `POST /api/establishments/me/opportunities` + canonical
+- `PATCH /api/establishments/me/opportunities/{id}` + canonical
+- `DELETE /api/establishments/me/opportunities/{id}` + canonical (soft delete)
+- `PATCH /api/establishments/me/opportunities/{id}/end` + canonical
+- `POST /api/establishments/me/opportunities/{id}/assets` + canonical
+
+**OAO-4 (Apply):**
+- `POST /api/users/opportunities/{id}/apply` + canonical
+- `POST /api/establishments/opportunities/{id}/apply` + `.../browse/opportunities/{id}/apply`
+
+**OAO-5 (Offers — internal-only, no Ajeer/contracts):**
+- `GET /api/users/offers` + show
+- `GET /api/establishments/received-offers` + show
+- `GET /api/establishments/sent-offers` + show
+- `GET /api/establishments/offers/pending-action` (with `?type` filter)
+- `POST /api/establishments/offers/send`
+- `POST /api/(users|establishments)/offers/{id}/accept` and `/reject`
+- `POST /api/(users|establishments)/offers/cancel` and `/{id}/approve-cancellation`, `/{id}/reject-cancellation`
+- `GET /api/establishments/offers/{id}/pending-sponsor-approval`
+- `POST /api/establishments/offers/{id}/sponsor/accept` and `/sponsor/reject`
+
+**OAO-6 (Evaluations):**
+- `GET /api/(users|establishments)/evaluations` + show + create
+- `GET /api/(users|establishments)/offers/unevaluated`
+- `GET /api/(users|establishments)/offers/{id}/other-evaluation`
+
+All endpoints register both the Laravel legacy URL and a canonical `/api/v1/...` URL.
+
+### 14.2 Removed Laravel endpoints (per docs/25-ajeer-disposition.md)
+
+- `GET /api/establishments/offers/ajeer/check-eligibility` — Ajeer integration removed.
+- `GET /api/establishments/offers/pending-invoice` — Invoices removed.
+- `GET /api/establishments/invoices/*` (index/show/issue) — Invoices removed.
+- `GET /api/establishments/contracts-regulations` — Qiwa + Ajeer data sources removed (Q-CONTRACTS-REGULATIONS still open).
+- `POST/PUT/DELETE /api/users/opportunities` — apiResource auto-routes never implemented in Laravel.
+- `POST/PUT/DELETE /api/users/offers` + `/api/establishments/received-offers` + `/sent-offers` apiResource auto-routes — same.
+- `PATCH/DELETE /api/users/evaluations/{id}` + `/api/establishments/evaluations/{id}` apiResource auto-routes — evaluations are one-shot.
+
+### 14.3 DTO compatibility notes
+
+- Snake_case throughout via `[JsonPropertyName]`.
+- `OfferResponse` is brand new and Laravel-mirrored MINUS `contract`, `contract_type`, `contract_type_label`, `contract_path`, `notice_path`, `show_print_notice`, every `ajeer_*`. Adds top-level `accepted_at`.
+- `OfferCancellationRequestDto` exposes `requested_by_type` + `requested_by_id` instead of the Laravel polymorphic morph.
+- `EvaluationResponse` drops the `contract` nested resource entirely; carries `offer_id` instead.
+
+### 14.4 Status machines (final)
+
+**Opportunity:** Drafted (legacy import only) → Upcoming or Active (start_date auto-derived) → Ended (explicit) / Finished (passive).
+
+**Application:** No status column. Derived as `accepted` when at least one Offer exists for the application, else `pending`.
+
+**Offer:**
+- Initial: `Pending` (no sponsor) or `PendingSponsorApproval` (with sponsor).
+- `PendingSponsorApproval` → `Pending` (sponsor accept) or `SponsorRejected` (sponsor reject).
+- `Pending` → `Accepted`, `Rejected`, `Expired`.
+- `Accepted` → `CancellationRequested` (no sponsor) or `PendingSponsorCancellationApproval` (with sponsor).
+- Cancellation request → `Canceled` (approve) or `Accepted` (reject; reopenable).
+- `Accepted` → `WaitingForEvaluation` (when first evaluation lands) → `Completed` (both sides evaluated).
+- Invalid transitions surface as 422 `invalid_offer_status_transition`.
+
+**Evaluation:** Immutable. One row per (offer, evaluator user) and per (offer, evaluator establishment). Both sides evaluated → Offer.Completed.
+
+### 14.5 Outbox events emitted
+
+Wired inline in every write endpoint, persisted in the same transaction as the aggregate change:
+
+- `opportunity.created`, `opportunity.updated`, `opportunity.ended`, `opportunity.deleted`
+- `application.submitted`
+- `offer.created`, `offer.sponsor_approval_pending` (when sponsor is set on send)
+- `offer.accepted`, `offer.rejected`
+- `offer.cancellation_requested`, `offer.cancellation_approved`, `offer.cancellation_rejected`
+- `offer.sponsor_accepted`, `offer.sponsor_rejected`
+- `evaluation.submitted`
+
+`offer.expired` and `offer.completed` slots exist in `OfferEventTypes` but are not emitted by an HTTP endpoint today (expiry is compute-on-read; completion happens implicitly during the second evaluation's SaveChanges).
+
+### 14.6 Remaining blocked items
+
+| Item | Blocker |
+|---|---|
+| `/api/establishments/contracts-regulations` rewrite | Q-CONTRACTS-REGULATIONS — Qiwa saudization% + Ajeer contract% data not available. |
+| `/api/(users|establishments)/notifications/*` HTTP routes | Q-NOTIF-TRANSPORT — currently the outbox is the only fan-out surface. |
+| User profile mutators (8 PATCHes) | Q-PROFILE-MUTATORS + Q-PF-PHOTO — multiple new tables. |
+| Establishment profile mutators | Q-EST-1 + Q-EST-2 + missing bank/experience tables. |
+| `POST /api/users/logout` | Q-AUTH-1. |
+| Event slice | Q-EVENT-SLICE — pending product/team direction. `Opportunity.event_id` is a bare Guid until then. |
+| Background job to flip Pending → Expired | Q-OFFER-EXPIRY — compute-on-read is sufficient for now. |
+
+### 14.7 Commits added (OAO-3 → OAO-7)
+
+1. `c932724` feat(opportunities): add owner create opportunity endpoint
+2. `3d78181` feat(opportunities): add owner update/delete/end endpoints
+3. `a47f2b4` feat(opportunities): add opportunity asset link endpoint
+4. `3e30eb5` test(opportunities): add opportunity write compatibility tests
+5. `405e282` feat(applications): add user apply endpoint
+6. `7fc3262` feat(applications): add establishment apply endpoint
+7. `ebb0ab6` fix(applications): translate duplicate application constraint to conflict
+8. `9865cb3` test(applications): add apply lifecycle tests
+9. `b126095` feat(offers): add shared offer response DTOs
+10. `6a94071` feat(offers): add offer read endpoints
+11. `e48e1ce` feat(offers): add send offer endpoint
+12. `d2064a4` feat(offers): add accept and reject endpoints
+13. `f5a2068` feat(offers): add cancellation request endpoints
+14. `fab72b8` feat(offers): add sponsor approval endpoints
+15. `99e3e26` test(offers): add offer lifecycle tests
+16. `e56606d` feat(evaluations): add shared evaluation response DTOs
+17. `3660637` feat(evaluations): add user evaluation endpoints
+18. `546ff3b` feat(evaluations): add establishment evaluation endpoints
+19. `26b452b` feat(offers): add unevaluated and other-evaluation endpoints
+20. `850de11` test(evaluations): add evaluation lifecycle tests
+21. `ab142fe` test(oao): add outbox emission tests
+
+### 14.8 Sprint result summary
+
+- **Tests added (OAO-3 → 7):** 50 (write compat 14, apply 11, offer lifecycle 13, evaluation 8, outbox 4). **Total at end of OAO-7: 328.**
+- **Build:** clean.
+
+## 15. Recommended next phase after OAO
+
+Three options, in suggested order:
+
+1. **Notifications HTTP routes** (Phase NOTIF-1) — small surface (3 routes per side), DB-only reads, unblocks the public frontend's badge counter. Q-NOTIF-TRANSPORT still gates external delivery (email/SMS/push) but the read endpoints + outbox subscriber pattern can ship first.
+2. **Events slice** (Phase EVENT-1) — unblocks `opportunity.event` hydration, the `byApplicableEvent()` filter, the suggested-locations / suggested-attendees endpoints, and a chunk of init-data fields.
+3. **Profile mutators** (Phase USER-PROFILE) — Q-PROFILE-MUTATORS owns several schema additions (user_education, user_skills, user_languages, user_experiences, user_certificates, user_professions + `users` column extensions). Heaviest of the three; valuable to unblock the profile page.
+
+> **Recommendation: start NOTIF-1.** Smallest, no upstream blockers, lights up the badge the public frontend already reads.
 
 ---
 
 ### Recommended next prompt
 
-**"Implement Opportunities migration — Phase OAO-3 write endpoints"**
+**"Notifications HTTP routes migration — Phase NOTIF-1"**
 
-Scope: opportunity create / update / delete / end + opportunity asset link. Strictly no apply / no offers / no evaluations / no notifications. Tests per slice. Keep Laravel-shape responses returning the same `OpportunityResponse` DTO already shipped in OAO-2. Build + test after every commit. Stop and report at the end of OAO-3.
+Scope: ship the 6 user + establishment notification routes (list / mark-as-read / unread-count) reading from a new `notifications` table populated by an outbox subscriber that mirrors the OAO event stream. Defer external transport (email/SMS/push) until Q-NOTIF-TRANSPORT is decided. Tests per endpoint. Stop and report when done.
