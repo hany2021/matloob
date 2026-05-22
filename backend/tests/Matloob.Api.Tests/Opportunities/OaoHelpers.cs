@@ -2,6 +2,7 @@ using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
 using Matloob.Api.Tests.Establishments;
 using Matloob.Domain.Applications;
+using Matloob.Domain.Assets;
 using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Opportunities;
@@ -180,6 +181,69 @@ internal static class OaoHelpers
         db.OpportunityApplications.Add(app);
         await db.SaveChangesAsync();
         return app.Id;
+    }
+
+    /// <summary>
+    /// Seed an Asset row owned by <paramref name="ownerSub"/> so a test can
+    /// link it to an opportunity via the assets endpoint.
+    /// </summary>
+    public static async Task<Guid> SeedAssetAsync(
+        OpportunitiesApiFactory factory,
+        string ownerSub,
+        string fileName = "doc.pdf",
+        string contentType = "application/pdf")
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var id = Guid.NewGuid();
+        db.Assets.Add(new Asset(
+            id: id,
+            originalFileName: fileName,
+            storedFileName: $"{id:N}.pdf",
+            contentType: contentType,
+            sizeBytes: 1024,
+            sha256: new string('a', 64),
+            relativePath: $"test/{id:N}.pdf",
+            storageDriver: AssetStorageDriver.Local,
+            visibility: AssetVisibility.Private,
+            purpose: AssetPurpose.Generic,
+            ownerUserId: ownerSub));
+        await db.SaveChangesAsync();
+        return id;
+    }
+
+    /// <summary>
+    /// Fetch an opportunity directly to inspect properties (e.g. status,
+    /// ended_at) after a mutation endpoint call.
+    /// </summary>
+    public static async Task<Opportunity?> LoadOpportunityAsync(
+        OpportunitiesApiFactory factory,
+        Guid id)
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Opportunities
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(o => o.Id == id);
+    }
+
+    /// <summary>
+    /// Count outbox events emitted with a given type since seeding. Used
+    /// by tests asserting opportunity.created / .updated / .ended / .deleted.
+    /// </summary>
+    public static async Task<int> CountOutboxEventsAsync(
+        OpportunitiesApiFactory factory,
+        string eventType,
+        Guid? aggregateId = null)
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var q = db.OutboxEvents.AsNoTracking().Where(e => e.EventType == eventType);
+        if (aggregateId is { } id)
+        {
+            q = q.Where(e => e.AggregateId == id);
+        }
+        return await q.CountAsync();
     }
 
     // -- internals -----------------------------------------------------------
