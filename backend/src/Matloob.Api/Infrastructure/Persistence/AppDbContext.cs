@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Matloob.Domain.Applications;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
@@ -71,6 +72,10 @@ public sealed class AppDbContext : DbContext
         => Set<SuccessManagementCriterion>();
     public DbSet<SuccessManagementCriterionAsset> SuccessManagementCriterionAssets
         => Set<SuccessManagementCriterionAsset>();
+
+    // Applications to opportunities (both worker-side and establishment-side).
+    public DbSet<OpportunityApplication> OpportunityApplications
+        => Set<OpportunityApplication>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
