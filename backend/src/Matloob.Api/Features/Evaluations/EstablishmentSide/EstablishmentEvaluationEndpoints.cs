@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using FastEndpoints;
 using FluentValidation;
@@ -9,8 +10,11 @@ using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Infrastructure.Storage;
+using Matloob.Domain.Assets;
 using Matloob.Domain.Evaluations;
 using Matloob.Domain.Offers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Evaluations.EstablishmentSide;
@@ -114,24 +118,46 @@ public sealed class GetEstablishmentEvaluationEndpoint
     }
 }
 
-/// <summary><c>POST /api/establishments/evaluations</c> + canonical.</summary>
+/// <summary>
+/// <c>POST /api/establishments/evaluations</c> + canonical
+/// <c>POST /api/v1/establishments/{establishmentId}/evaluations</c>.
+///
+/// <para>
+/// Accepts BOTH content types so the legacy Laravel frontend's
+/// multipart/form-data uploads keep working AND new clients can post
+/// pure JSON:
+/// </para>
+/// <list type="bullet">
+///   <item><c>application/json</c>: same field set as before
+///     (<see cref="CreateEstablishmentEvaluationRequest"/>). No file
+///     uploads.</item>
+///   <item><c>multipart/form-data</c>: same field set as form fields,
+///     plus a repeated <c>uploads[]</c> file part. Each file is saved
+///     via <see cref="IFileStorage"/>, an <see cref="Asset"/> row is
+///     written, and an <see cref="EvaluationAsset"/> row links it to
+///     the new evaluation.</item>
+/// </list>
+/// </summary>
 public sealed class CreateEstablishmentEvaluationEndpoint
-    : Endpoint<CreateEstablishmentEvaluationRequest, EvaluationResponse>
+    : EndpointWithoutRequest<EvaluationResponse>
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
     private readonly IOutboxWriter _outbox;
+    private readonly IFileStorage _storage;
 
     public CreateEstablishmentEvaluationEndpoint(
-        AppDbContext db, ICurrentUser u, TimeProvider c, IOutboxWriter o)
-    { _db = db; _currentUser = u; _clock = c; _outbox = o; }
+        AppDbContext db, ICurrentUser u, TimeProvider c, IOutboxWriter o, IFileStorage storage)
+    { _db = db; _currentUser = u; _clock = c; _outbox = o; _storage = storage; }
 
     public override void Configure()
     {
         Post("/api/establishments/evaluations",
              "/api/v1/establishments/{establishmentId}/evaluations");
         Policies(MatloobPolicies.User);
+        // No AllowFileUploads / AcceptsAnyContentType — we read the body
+        // manually in HandleAsync so any content-type is permitted.
         Description(b => b
             .Produces<EvaluationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -144,8 +170,19 @@ public sealed class CreateEstablishmentEvaluationEndpoint
         Summary(s => s.Summary = "Establishment submits an evaluation on an offer.");
     }
 
-    public override async Task HandleAsync(CreateEstablishmentEvaluationRequest req, CancellationToken ct)
+    public override async Task HandleAsync(CancellationToken ct)
     {
+        // Read body once; multipart and JSON branches diverge here.
+        var (req, uploadedFiles) = await ReadRequestAsync(HttpContext, ct);
+        if (req is null)
+        {
+            await ProblemWriter.WriteAsync(HttpContext,
+                StatusCodes.Status400BadRequest,
+                "invalid_request_body",
+                "Request body could not be parsed as JSON or multipart/form-data.", ct);
+            return;
+        }
+
         var sub = _currentUser.UserId;
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
         if (establishmentId is null) return;
@@ -264,6 +301,39 @@ public sealed class CreateEstablishmentEvaluationEndpoint
 
         _db.Evaluations.Add(evaluation);
 
+        // Persist any multipart uploads as Assets + EvaluationAsset links
+        // (Laravel legacy supported inline uploads[] in the request).
+        var now = _clock.GetUtcNow();
+        foreach (var file in uploadedFiles)
+        {
+            if (file.Length == 0) continue;
+            var ext = Path.GetExtension(file.FileName ?? string.Empty);
+            await using var input = file.OpenReadStream();
+            var stored = await _storage.SaveAsync(input, ext, ct);
+
+            var asset = new Asset(
+                id: Guid.NewGuid(),
+                originalFileName: file.FileName ?? $"upload{ext}",
+                storedFileName: stored.StoredFileName,
+                contentType: file.ContentType ?? "application/octet-stream",
+                sizeBytes: stored.SizeBytes,
+                sha256: stored.Sha256Hex,
+                relativePath: stored.RelativePath,
+                storageDriver: AssetStorageDriver.Local,
+                visibility: AssetVisibility.Private,
+                purpose: AssetPurpose.Generic,
+                ownerUserId: sub,
+                ownerEstablishmentId: establishmentId.Value,
+                metadataJson: null);
+            _db.Assets.Add(asset);
+            _db.EvaluationAssets.Add(new EvaluationAsset(
+                id: Guid.NewGuid(),
+                evaluationId: evaluation.Id,
+                assetId: asset.Id,
+                uploadedByUserId: sub,
+                uploadedAt: now));
+        }
+
         await CreateUserEvaluationEndpoint.MaybeMarkCompleted(_db, offer, ct);
 
         _outbox.Enqueue(EvaluationEventTypes.Submitted, nameof(Evaluation), evaluation.Id,
@@ -272,6 +342,7 @@ public sealed class CreateEstablishmentEvaluationEndpoint
                 id = evaluation.Id,
                 offerId = offer.Id,
                 evaluatorEstablishmentId = establishmentId.Value,
+                uploadCount = uploadedFiles.Count,
             });
         _outbox.Flush();
         await _db.SaveChangesAsync(ct);
@@ -280,6 +351,72 @@ public sealed class CreateEstablishmentEvaluationEndpoint
         HttpContext.Response.Headers.Location =
             $"/api/v1/establishments/{establishmentId.Value}/evaluations/{evaluation.Id}";
         await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
+    }
+
+    /// <summary>
+    /// Read the request body once, regardless of whether the caller sent
+    /// JSON or multipart/form-data. Returns a parsed
+    /// <see cref="CreateEstablishmentEvaluationRequest"/> + the list of
+    /// uploaded files (empty for JSON).
+    /// </summary>
+    private static async Task<(CreateEstablishmentEvaluationRequest? Req, IReadOnlyList<IFormFile> Files)>
+        ReadRequestAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var contentType = ctx.Request.ContentType ?? string.Empty;
+        if (contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+        {
+            var form = await ctx.Request.ReadFormAsync(ct);
+            var req = new CreateEstablishmentEvaluationRequest
+            {
+                OfferId = ParseGuid(form, "offer_id") ?? Guid.Empty,
+                Rating = (byte)(ParseInt(form, "rating") ?? 0),
+                RecommendForFutureOpportunities = ParseBool(form, "recommend_for_future_opportunities") ?? false,
+                Comment = form["comment"].FirstOrDefault(),
+                MatchingPercentage = ParseInt(form, "matching_percentage"),
+                SuccessManagementCriteriaComment = form["success_management_criteria_comment"].FirstOrDefault(),
+                MatloobEvaluation = (byte?)ParseInt(form, "matloob_evaluation"),
+            };
+            // Accept both `uploads[]` (Laravel) and `uploads` (.NET) keys.
+            var files = new List<IFormFile>();
+            foreach (var f in form.Files)
+            {
+                if (f.Name == "uploads" || f.Name == "uploads[]")
+                {
+                    files.Add(f);
+                }
+            }
+            return (req, files);
+        }
+
+        if (contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var req = await ctx.Request.ReadFromJsonAsync<CreateEstablishmentEvaluationRequest>(ct);
+                return (req, Array.Empty<IFormFile>());
+            }
+            catch
+            {
+                return (null, Array.Empty<IFormFile>());
+            }
+        }
+
+        // Empty / unknown content type — treat as no body.
+        return (new CreateEstablishmentEvaluationRequest(), Array.Empty<IFormFile>());
+    }
+
+    private static Guid? ParseGuid(IFormCollection form, string key) =>
+        Guid.TryParse(form[key].FirstOrDefault(), out var g) ? g : null;
+
+    private static int? ParseInt(IFormCollection form, string key) =>
+        int.TryParse(form[key].FirstOrDefault(), out var i) ? i : null;
+
+    private static bool? ParseBool(IFormCollection form, string key)
+    {
+        var v = form[key].FirstOrDefault();
+        if (string.IsNullOrEmpty(v)) return null;
+        if (bool.TryParse(v, out var b)) return b;
+        return v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase);
     }
 }
 
