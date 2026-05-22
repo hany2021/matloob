@@ -18,6 +18,26 @@ namespace Matloob.Api.Infrastructure.Persistence.Seed;
 /// cancellation / rejection reasons) ship as embedded resources next to this
 /// class so the seeder runs the same way in Dev, integration tests, and a
 /// published build.
+///
+/// <para>
+/// <b>Phase OAO-1 coverage check.</b> The Opportunities / Applicants / Offers
+/// / Evaluations slices depend on three lookup tables that this seeder owns:
+/// <list type="bullet">
+///   <item><c>opportunity_categories</c> — seven parent groups with their
+///     children, populated via <see cref="SeedOpportunityCategoriesAsync"/>.
+///     ForVacancy / IsOther flags drive the worker-vs-establishment routing
+///     in the browse endpoints.</item>
+///   <item><c>offer_rejection_reasons</c> — loaded from
+///     <c>rejection_reasons.json</c> via <see cref="NamedAjeerItem"/>. The
+///     <c>ajeer_id</c> field is parsed but never written; per
+///     docs/25-ajeer-disposition.md the new system does not retain that
+///     foreign key.</item>
+///   <item><c>offer_cancellation_reasons</c> — same shape as the rejection
+///     reasons.</item>
+/// </list>
+/// No additional seed work is needed for Phase OAO-1; the existing data is
+/// complete and Ajeer-stripped.
+/// </para>
 /// </summary>
 public static class ReferenceDataSeeder
 {
