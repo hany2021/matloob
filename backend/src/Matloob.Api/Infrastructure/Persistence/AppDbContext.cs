@@ -4,6 +4,7 @@ using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
 using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Evaluations;
 using Matloob.Domain.Events;
 using Matloob.Domain.Offers;
 using Matloob.Domain.Opportunities;
@@ -82,6 +83,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<Offer> Offers => Set<Offer>();
     public DbSet<OfferCancellationRequest> OfferCancellationRequests
         => Set<OfferCancellationRequest>();
+
+    // Evaluations (attached to offers, not contracts — Q-EVAL-1).
+    public DbSet<Evaluation> Evaluations => Set<Evaluation>();
+    public DbSet<EvaluationAsset> EvaluationAssets => Set<EvaluationAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
