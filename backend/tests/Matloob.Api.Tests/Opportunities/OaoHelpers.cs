@@ -228,6 +228,72 @@ internal static class OaoHelpers
     }
 
     /// <summary>
+    /// Fetch an offer directly to inspect status / AcceptedAt after a
+    /// lifecycle endpoint call.
+    /// </summary>
+    public static async Task<Matloob.Domain.Offers.Offer?> LoadOfferAsync(
+        OpportunitiesApiFactory factory,
+        Guid id)
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Offers
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(o => o.Id == id);
+    }
+
+    /// <summary>
+    /// Seed an Offer row for a (sender, opportunity, application) triple.
+    /// <paramref name="status"/> optionally overrides the factory-computed
+    /// initial status so tests can stage Accepted/etc directly.
+    /// </summary>
+    public static async Task<Guid> SeedOfferAsync(
+        OpportunitiesApiFactory factory,
+        Guid senderEstablishmentId,
+        Guid opportunityId,
+        Guid applicationId,
+        string sentByUserId,
+        Matloob.Domain.Offers.OfferStatus? status = null,
+        Guid? sponsorEstablishmentId = null,
+        decimal monthlySalary = 5000m,
+        DateTimeOffset? acceptedAt = null)
+    {
+        using var scope = factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var now = DateTimeOffset.UtcNow;
+        var offer = Matloob.Domain.Offers.Offer.Create(
+            id: Guid.NewGuid(),
+            senderEstablishmentId: senderEstablishmentId,
+            opportunityId: opportunityId,
+            applicationId: applicationId,
+            sentByUserId: sentByUserId,
+            offerValidityFrom: now,
+            offerValidityTo: now.AddDays(30),
+            startDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(31),
+            endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(40),
+            monthlySalary: monthlySalary,
+            sponsorEstablishmentId: sponsorEstablishmentId);
+
+        if (status is { } s)
+        {
+            typeof(Matloob.Domain.Offers.Offer)
+                .GetProperty(nameof(Matloob.Domain.Offers.Offer.Status))!
+                .SetValue(offer, s);
+        }
+        if (acceptedAt is { } at)
+        {
+            typeof(Matloob.Domain.Offers.Offer)
+                .GetProperty(nameof(Matloob.Domain.Offers.Offer.AcceptedAt))!
+                .SetValue(offer, at);
+        }
+
+        db.Offers.Add(offer);
+        await db.SaveChangesAsync();
+        return offer.Id;
+    }
+
+    /// <summary>
     /// Count outbox events emitted with a given type since seeding. Used
     /// by tests asserting opportunity.created / .updated / .ended / .deleted.
     /// </summary>
