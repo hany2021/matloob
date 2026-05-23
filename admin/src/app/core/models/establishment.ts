@@ -1,7 +1,10 @@
 /**
- * Establishment statuses that drive the status-badge UI. Mirrors the
- * .NET <c>EstablishmentStatus</c> enum string values.
+ * Wire shapes for the canonical `/api/v1/establishments/*` reads. These
+ * endpoints use the FastEndpoints default web policy → camelCase (the
+ * legacy Laravel-shaped `/api/establishments/me/profile` endpoint is
+ * snake_case and lives outside the admin's surface).
  */
+
 export type EstablishmentStatus =
   | 'Draft'
   | 'PendingReview'
@@ -9,17 +12,30 @@ export type EstablishmentStatus =
   | 'Rejected'
   | 'Suspended';
 
+export type EstablishmentMemberRole = 'Owner' | 'Manager' | 'Other';
+
+/** Item returned by `GET /api/v1/establishments` (self-list). */
 export interface EstablishmentSummary {
   id: string;
   name: string;
-  email: string;
+  commercialRegistrationNumber: string;
   status: EstablishmentStatus;
-  createdAt?: string;
-  submittedAt?: string | null;
-  approvedAt?: string | null;
-  commercialRegistrationNumber?: string;
-  laborOfficeId?: string;
-  sequenceNumber?: string;
+  city: string;
+  createdByUserId: string;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  suspendedAt: string | null;
+  isLegacyImport: boolean;
+  myRole: EstablishmentMemberRole | null;
+  canEdit: boolean;
+  canSubmit: boolean;
+  canManageMembers: boolean;
+  canCreateChangeRequest: boolean;
+}
+
+export interface ListMineResponse {
+  items: EstablishmentSummary[];
 }
 
 export interface EstablishmentDocumentSummary {
@@ -28,51 +44,62 @@ export interface EstablishmentDocumentSummary {
   uploadedAt: string;
 }
 
-export interface EstablishmentMemberSummary {
+export interface EstablishmentMemberDetailsSummary {
   id: string;
   userId: string;
-  role: 'Owner' | 'Manager' | 'Other';
+  role: EstablishmentMemberRole;
   addedAt: string;
 }
 
 export interface PendingChangeRequestSummary {
   id: string;
-  status: 'Draft' | 'PendingReview';
+  status: 'Draft' | 'PendingReview' | string;
   createdAt: string;
   submittedAt: string | null;
   createdByUserId: string;
 }
 
-export interface EstablishmentDetail extends EstablishmentSummary {
+/** Response from `GET /api/v1/establishments/{id}`. */
+export interface EstablishmentDetail {
+  id: string;
   status: EstablishmentStatus;
   createdByUserId: string;
-  rejectionReason?: string | null;
-  suspendedAt?: string | null;
-  suspensionReason?: string | null;
+  createdAt: string;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  suspendedAt: string | null;
+  suspensionReason: string | null;
   isSponsor: boolean;
   canManageEvents: boolean;
-  isLegacyImport?: boolean;
-  myRole?: 'Owner' | 'Manager' | 'Other' | null;
-  commercialRegistrationExpiry?: string | null;
-  city?: string;
-  phone?: string;
-  economicActivity?: string | null;
-  subEconomicActivity?: string | null;
-  district?: string | null;
-  area?: string | null;
-  street?: string | null;
-  description?: string | null;
-  locationTitle?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  buildingNumber?: string | null;
-  postalCode?: string | null;
-  additionalNumber?: string | null;
-  website?: string | null;
-  yearsOfExperience?: number | null;
-  establishmentSize?: string | null;
-  additionalContactNumber?: string | null;
+  isLegacyImport: boolean;
+  myRole: EstablishmentMemberRole | null;
+  name: string;
+  commercialRegistrationNumber: string;
+  commercialRegistrationExpiry: string | null;
+  laborOfficeId: string;
+  sequenceNumber: string;
+  city: string;
+  email: string;
+  phone: string;
+  economicActivity: string | null;
+  subEconomicActivity: string | null;
+  district: string | null;
+  area: string | null;
+  street: string | null;
+  description: string | null;
+  locationTitle: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  buildingNumber: string | null;
+  postalCode: string | null;
+  additionalNumber: string | null;
+  website: string | null;
+  yearsOfExperience: number | null;
+  establishmentSize: string | null;
+  additionalContactNumber: string | null;
   documents: EstablishmentDocumentSummary[];
-  members?: EstablishmentMemberSummary[] | null;
-  pendingChangeRequest?: PendingChangeRequestSummary | null;
+  members: EstablishmentMemberDetailsSummary[] | null;
+  pendingChangeRequest: PendingChangeRequestSummary | null;
 }
