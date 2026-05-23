@@ -44,5 +44,12 @@ export interface CreateEvaluationRequest {
   comment?: string | null;
   matching_percentage?: number | null;
   success_management_criteria_comment?: string | null;
-  upload_asset_ids?: string[];
+  matloob_evaluation?: number | null;
+}
+
+export interface UnevaluatedOffer {
+  id: string;
+  opportunity_name: string | null;
+  counterparty_name: string | null;
+  accepted_at: string | null;
 }
