@@ -50,4 +50,9 @@ export class AdminShellComponent implements OnInit {
     this.auth.logout();
     this.profileService.clear();
   }
+
+  protected onEstablishmentChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.profileService.setActiveEstablishment(value || null);
+  }
 }

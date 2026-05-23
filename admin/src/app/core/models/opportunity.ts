@@ -79,34 +79,43 @@ export interface Opportunity {
   is_applied?: boolean | null;
 }
 
-export interface OpportunityListResponse {
-  data: Opportunity[];
-  page: number;
-  page_size: number;
-  total: number;
-}
-
+/**
+ * Single-create payload for `POST /api/v1/establishments/{eid}/opportunities`.
+ * The bulk `{ event_id, opportunities: [...] }` variant exists on the
+ * backend; the admin only ever needs single-create.
+ */
 export interface CreateOpportunityRequest {
+  event_id?: string;
+  opportunity_category_id: string;
   name: string;
   description: string;
   start_date: string;
   end_date: string;
+  location_title: string;
   lat: number;
   lon: number;
-  location_title: string;
   required_personnel: number;
   monthly_salary?: number | null;
   years_of_experience_required?: number | null;
-  establishment_classification: string[];
   working_hours_type?: string | null;
   working_hours_from?: string | null;
   working_hours_to?: string | null;
   fees?: number | null;
   phone_contact_information?: string | null;
   email_contact_information?: string | null;
-  gender: string[];
+  establishment_classification?: string[];
+  gender?: string[];
   nationality_id?: string | null;
-  opportunity_category_id: string;
+  city_id?: string | null;
 }
 
-export type UpdateOpportunityRequest = Partial<CreateOpportunityRequest>;
+export type UpdateOpportunityRequest = Partial<Omit<CreateOpportunityRequest, 'event_id'>>;
+
+export interface LinkOpportunityAssetRequest {
+  asset_id: string;
+}
+
+export interface LinkOpportunityAssetResponse {
+  id: string;
+  asset_id: string;
+}

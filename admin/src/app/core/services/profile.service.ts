@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, forkJoin, tap } from 'rxjs';
 
 import { ApiClient } from '../http/api-client';
@@ -8,7 +8,9 @@ import { InitData, MyEstablishmentListItem, UserProfile } from '../models/profil
  * Reads the current user's profile + establishment memberships. Caches
  * the last successful load as signals so the shell can surface the
  * caller's name and active establishments without a refetch on every
- * route change.
+ * route change. Also exposes an `activeEstablishmentId` signal —
+ * opportunity/offer/evaluation pages all need to know which
+ * establishment is acting, and we seed it to the first membership.
  */
 @Injectable({ providedIn: 'root' })
 export class ProfileService {
@@ -17,6 +19,14 @@ export class ProfileService {
   readonly profile = signal<UserProfile | null>(null);
   readonly establishments = signal<MyEstablishmentListItem[]>([]);
   readonly loaded = signal(false);
+
+  private readonly activeIdInternal = signal<string | null>(null);
+  /** First active membership, seeded when the establishment list loads. */
+  readonly activeEstablishmentId = computed(() => {
+    const explicit = this.activeIdInternal();
+    if (explicit) return explicit;
+    return this.establishments()[0]?.id ?? null;
+  });
 
   loadProfile(): Observable<UserProfile> {
     return this.api.get<UserProfile>('/api/v1/profile').pipe(
@@ -40,9 +50,14 @@ export class ProfileService {
     );
   }
 
+  setActiveEstablishment(id: string | null): void {
+    this.activeIdInternal.set(id);
+  }
+
   clear(): void {
     this.profile.set(null);
     this.establishments.set([]);
+    this.activeIdInternal.set(null);
     this.loaded.set(false);
   }
 }

@@ -20,7 +20,21 @@
 
   <div class="main">
     <header class="topbar">
-      <div class="spacer"></div>
+      <div class="spacer">
+        @if (profileService.establishments().length > 1) {
+          <label class="establishment-picker">
+            <span class="muted">Acting as</span>
+            <select
+              [value]="profileService.activeEstablishmentId() ?? ''"
+              (change)="onEstablishmentChange($event)"
+            >
+              @for (e of profileService.establishments(); track e.id) {
+                <option [value]="e.id">{{ e.name }}</option>
+              }
+            </select>
+          </label>
+        }
+      </div>
       <div class="user">
         @if (auth.userName(); as name) {
           <span>{{ name }}</span>
