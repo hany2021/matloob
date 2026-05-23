@@ -8,6 +8,7 @@ import { ProfileService } from '../../core/services/profile.service';
 import { CreateOpportunityRequest, UpdateOpportunityRequest } from '../../core/models/opportunity';
 import { ToastService } from '../../shared/components/toast.service';
 import { LoadingComponent } from '../../shared/components/loading.component';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Create / edit opportunity form. Hosted at both `/opportunities/new`
@@ -123,6 +124,7 @@ export class OpportunityFormComponent implements OnInit {
   private readonly service = inject(OpportunityService);
   private readonly profile = inject(ProfileService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly id = computed(() => this.route.snapshot.paramMap.get('id'));
   protected readonly loading = signal(false);
@@ -207,7 +209,10 @@ export class OpportunityFormComponent implements OnInit {
           this.busy.set(false);
           this.router.navigate(['/opportunities', o.id]);
         },
-        error: () => this.busy.set(false),
+        error: (err) => {
+          this.apiError.notify(err, 'Save failed');
+          this.busy.set(false);
+        },
       });
     } else {
       const create: CreateOpportunityRequest = {
@@ -232,7 +237,10 @@ export class OpportunityFormComponent implements OnInit {
           this.busy.set(false);
           this.router.navigate(['/opportunities', o.id]);
         },
-        error: () => this.busy.set(false),
+        error: (err) => {
+          this.apiError.notify(err, 'Create failed');
+          this.busy.set(false);
+        },
       });
     }
   }

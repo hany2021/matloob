@@ -8,7 +8,7 @@ import {
   AssetVisibility,
   UploadAssetResponse,
 } from '../../core/models/asset';
-import { ToastService } from './toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Reusable file picker that uploads through the Local Assets API and
@@ -54,7 +54,7 @@ import { ToastService } from './toast.service';
 })
 export class AssetUploadComponent {
   private readonly assetService = inject(AssetService);
-  private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   @Input() purpose: AssetPurpose = 'Generic';
   @Input() visibility?: AssetVisibility;
@@ -96,9 +96,7 @@ export class AssetUploadComponent {
           this.uploaded.update((list) => [...list, asset]);
           this.uploadedAsset.emit(asset);
         } catch (err) {
-          // ProblemDetails interceptor has already toasted the technical
-          // detail; surface a per-file context line here.
-          this.toast.error(`Failed to upload ${file.name}`);
+          this.apiError.notify(err, `Failed to upload ${file.name}`);
         }
         this.progress.update(({ done, total }) => ({ done: done + 1, total }));
       }

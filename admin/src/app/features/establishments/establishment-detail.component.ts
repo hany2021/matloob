@@ -8,6 +8,7 @@ import { MemberSummary } from '../../core/models/admin-establishment';
 import { LoadingComponent } from '../../shared/components/loading.component';
 import { ConfirmDialogService } from '../../shared/components/confirm-dialog.service';
 import { ToastService } from '../../shared/components/toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Self-read establishment detail page. Composite snake_case shape from
@@ -119,6 +120,7 @@ export class EstablishmentDetailComponent implements OnInit {
   private readonly service = inject(EstablishmentService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly loading = signal(true);
   protected readonly detail = signal<EstablishmentDetail | null>(null);
@@ -160,6 +162,7 @@ export class EstablishmentDetailComponent implements OnInit {
         this.members.update((list) => list.filter((m) => m.id !== member.id));
         this.toast.success('Member removed.');
       },
+      error: (err) => this.apiError.notify(err, 'Remove member failed'),
     });
   }
 }

@@ -8,6 +8,7 @@ import { ProfileService } from '../../core/services/profile.service';
 import { LoadingComponent } from '../../shared/components/loading.component';
 import { ConfirmDialogService } from '../../shared/components/confirm-dialog.service';
 import { ToastService } from '../../shared/components/toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Offer detail page. Loads via the sent-offers endpoint first; if that
@@ -149,6 +150,7 @@ export class OfferDetailComponent implements OnInit {
   private readonly profile = inject(ProfileService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -196,7 +198,10 @@ export class OfferDetailComponent implements OnInit {
         this.toast.success(label);
         this.busy.set(false);
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, `${label.replace(/\.$/, '')} failed`);
+        this.busy.set(false);
+      },
     });
   }
 

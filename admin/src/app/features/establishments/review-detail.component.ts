@@ -10,6 +10,7 @@ import {
 import { LoadingComponent } from '../../shared/components/loading.component';
 import { ConfirmDialogService } from '../../shared/components/confirm-dialog.service';
 import { ToastService } from '../../shared/components/toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Admin review page. Approve / reject / suspend / reinstate buttons
@@ -130,6 +131,7 @@ export class ReviewDetailComponent implements OnInit {
   private readonly service = inject(EstablishmentService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -176,7 +178,10 @@ export class ReviewDetailComponent implements OnInit {
         this.busy.set(false);
         this.reload();
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Approve failed');
+        this.busy.set(false);
+      },
     });
   }
 
@@ -190,7 +195,10 @@ export class ReviewDetailComponent implements OnInit {
         this.busy.set(false);
         this.reload();
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Reject failed');
+        this.busy.set(false);
+      },
     });
   }
 
@@ -204,7 +212,10 @@ export class ReviewDetailComponent implements OnInit {
         this.busy.set(false);
         this.reload();
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Suspend failed');
+        this.busy.set(false);
+      },
     });
   }
 
@@ -221,7 +232,10 @@ export class ReviewDetailComponent implements OnInit {
         this.busy.set(false);
         this.reload();
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Reinstate failed');
+        this.busy.set(false);
+      },
     });
   }
 

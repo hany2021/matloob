@@ -7,6 +7,7 @@ import { OfferService } from '../../core/services/offer.service';
 import { ProfileService } from '../../core/services/profile.service';
 import { ToastService } from '../../shared/components/toast.service';
 import { SendOfferRequest } from '../../core/models/offer';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Send-offer form. The applicant id is typically pre-filled by the
@@ -103,6 +104,7 @@ export class SendOfferComponent implements OnInit {
   private readonly service = inject(OfferService);
   private readonly profile = inject(ProfileService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly busy = signal(false);
 
@@ -156,7 +158,10 @@ export class SendOfferComponent implements OnInit {
         this.busy.set(false);
         this.router.navigate(['/offers', o.id]);
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Send offer failed');
+        this.busy.set(false);
+      },
     });
   }
 }

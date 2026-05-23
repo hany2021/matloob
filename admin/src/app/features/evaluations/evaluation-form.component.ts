@@ -7,6 +7,7 @@ import { EvaluationService } from '../../core/services/evaluation.service';
 import { ProfileService } from '../../core/services/profile.service';
 import { ToastService } from '../../shared/components/toast.service';
 import { CreateEvaluationRequest } from '../../core/models/evaluation';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Create-evaluation form. Hooked from the "Left to evaluate" panel on
@@ -69,6 +70,7 @@ export class EvaluationFormComponent implements OnInit {
   private readonly service = inject(EvaluationService);
   private readonly profile = inject(ProfileService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly busy = signal(false);
 
@@ -108,7 +110,10 @@ export class EvaluationFormComponent implements OnInit {
         this.busy.set(false);
         this.router.navigate(['/evaluations']);
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Submit failed');
+        this.busy.set(false);
+      },
     });
   }
 }

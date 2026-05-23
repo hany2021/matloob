@@ -7,6 +7,7 @@ import { LoadingComponent } from '../../shared/components/loading.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
 import { ConfirmDialogService } from '../../shared/components/confirm-dialog.service';
 import { ToastService } from '../../shared/components/toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 
 /**
  * Admin queue of submitted establishment change requests awaiting a
@@ -69,6 +70,7 @@ export class ChangeRequestQueueComponent implements OnInit {
   private readonly service = inject(EstablishmentService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly loading = signal(true);
   protected readonly rows = signal<PendingChangeRequestItem[]>([]);
@@ -101,7 +103,10 @@ export class ChangeRequestQueueComponent implements OnInit {
         this.busy.set(null);
         this.rows.update((list) => list.filter((r) => r.id !== item.id));
       },
-      error: () => this.busy.set(null),
+      error: (err) => {
+        this.apiError.notify(err, 'Approve failed');
+        this.busy.set(null);
+      },
     });
   }
 
@@ -124,7 +129,10 @@ export class ChangeRequestQueueComponent implements OnInit {
         this.busy.set(null);
         this.rows.update((list) => list.filter((r) => r.id !== item.id));
       },
-      error: () => this.busy.set(null),
+      error: (err) => {
+        this.apiError.notify(err, 'Reject failed');
+        this.busy.set(null);
+      },
     });
   }
 }

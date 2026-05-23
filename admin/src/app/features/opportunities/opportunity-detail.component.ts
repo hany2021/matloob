@@ -9,6 +9,7 @@ import { AssetUploadComponent } from '../../shared/components/asset-upload.compo
 import { LoadingComponent } from '../../shared/components/loading.component';
 import { ConfirmDialogService } from '../../shared/components/confirm-dialog.service';
 import { ToastService } from '../../shared/components/toast.service';
+import { ApiErrorService } from '../../core/http/api-error.service';
 import { UploadAssetResponse } from '../../core/models/asset';
 
 /**
@@ -112,6 +113,7 @@ export class OpportunityDetailComponent implements OnInit {
   private readonly profile = inject(ProfileService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly apiError = inject(ApiErrorService);
 
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -155,7 +157,10 @@ export class OpportunityDetailComponent implements OnInit {
         this.toast.success('Opportunity ended.');
         this.busy.set(false);
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'End opportunity failed');
+        this.busy.set(false);
+      },
     });
   }
 
@@ -175,7 +180,10 @@ export class OpportunityDetailComponent implements OnInit {
         this.toast.success('Opportunity deleted.');
         this.router.navigate(['/opportunities']);
       },
-      error: () => this.busy.set(false),
+      error: (err) => {
+        this.apiError.notify(err, 'Delete failed');
+        this.busy.set(false);
+      },
     });
   }
 
@@ -187,6 +195,7 @@ export class OpportunityDetailComponent implements OnInit {
         this.toast.success('File attached.');
         this.reload();
       },
+      error: (err) => this.apiError.notify(err, 'Attach file failed'),
     });
   }
 
