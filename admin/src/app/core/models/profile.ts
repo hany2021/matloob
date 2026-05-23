@@ -15,21 +15,28 @@ export interface UserProfile {
 }
 
 /**
- * Membership entry returned by the establishment list endpoint
- * (`GET /api/v1/profile/establishments`). The admin shell uses this to
- * disambiguate when a user belongs to multiple establishments.
+ * Item returned by `GET /api/v1/users/profile/establishment-list`. Each
+ * entry is one establishment the caller is an active member of, with
+ * its status and the caller's role added as new-client extensions.
  */
-export interface MyEstablishmentMembership {
+export interface MyEstablishmentListItem {
   id: string;
   name: string;
+  type: string;
+  logo: string | null;
+  labor_office_id: string;
+  sequence_number: string;
   status: string;
-  role: 'Owner' | 'Manager' | 'Other';
-  is_sponsor: boolean;
-  can_manage_events: boolean;
+  role: 'Owner' | 'Manager' | 'Other' | string;
 }
 
+/**
+ * Snapshot used by the shell when the app boots: profile plus the list
+ * of establishments the caller can act on. Not produced by a single
+ * backend endpoint — the client assembles it from the two profile
+ * reads.
+ */
 export interface InitData {
-  identity_id: string;
-  user: UserProfile | null;
-  establishments: MyEstablishmentMembership[];
+  profile: UserProfile;
+  establishments: MyEstablishmentListItem[];
 }
