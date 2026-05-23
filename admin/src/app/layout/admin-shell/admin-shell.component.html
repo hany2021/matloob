@@ -1,0 +1,44 @@
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <strong>Matloob</strong>
+      <span class="muted">Admin</span>
+    </div>
+    <nav class="nav">
+      @for (item of visibleNav(); track item.path) {
+        <a
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          class="nav-link"
+        >
+          <span class="icon">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="spacer"></div>
+      <div class="user">
+        @if (auth.userName(); as name) {
+          <span>{{ name }}</span>
+        } @else if (auth.userEmail(); as email) {
+          <span>{{ email }}</span>
+        } @else {
+          <span class="muted">Signed in</span>
+        }
+        @if (auth.isAdmin()) {
+          <span class="badge badge-info">admin</span>
+        }
+        <button type="button" class="btn btn-ghost" (click)="logout()">
+          Sign out
+        </button>
+      </div>
+    </header>
+    <main class="outlet">
+      <router-outlet />
+    </main>
+  </div>
+</div>
