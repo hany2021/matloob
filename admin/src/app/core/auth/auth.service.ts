@@ -48,7 +48,15 @@ export class AuthService {
       showDebugInformation: !APP_CONFIG.production,
     };
     this.oauth.configure(cfg);
-    this.oauth.setupAutomaticSilentRefresh();
+
+    // Automatic silent refresh is intentionally NOT enabled. The
+    // matloob:admin-angular client isn't seeded with offline_access /
+    // AllowOfflineAccess, so the STS never issues a refresh token —
+    // calling setupAutomaticSilentRefresh() would just produce a
+    // "POST /connect/token 400" retry loop in the console with no
+    // upside. When the 1-hour access token expires, the
+    // ProblemDetailsInterceptor's 401 branch redirects the user
+    // through the OIDC login flow again.
 
     this.oauth.events.subscribe(() => this.refreshLocalState());
     this.refreshLocalState();

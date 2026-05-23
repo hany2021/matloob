@@ -27,15 +27,21 @@ type Tab = 'sent' | 'received' | 'pending';
         <p class="muted">{{ activeName() ?? '—' }}</p>
       </header>
 
-      <nav class="tabs">
+      <nav class="tabs" *ngIf="activeEstablishmentId()">
         <button class="tab" [class.active]="tab() === 'sent'" (click)="onTab('sent')">Sent</button>
         <button class="tab" [class.active]="tab() === 'received'" (click)="onTab('received')">Received</button>
         <button class="tab" [class.active]="tab() === 'pending'" (click)="onTab('pending')">Pending action</button>
       </nav>
 
-      <app-loading *ngIf="loading()" />
+      <app-empty-state
+        *ngIf="!activeEstablishmentId()"
+        heading="No active establishment"
+        message="You need to be a member of an Approved establishment to view offers."
+      />
 
-      <ng-container *ngIf="!loading()">
+      <app-loading *ngIf="activeEstablishmentId() && loading()" />
+
+      <ng-container *ngIf="activeEstablishmentId() && !loading()">
         <app-empty-state
           *ngIf="!rows().length"
           heading="No offers"

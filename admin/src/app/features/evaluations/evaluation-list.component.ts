@@ -27,9 +27,15 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
         <p class="muted">{{ activeName() ?? '—' }}</p>
       </header>
 
-      <app-loading *ngIf="loading()" />
+      <app-empty-state
+        *ngIf="!activeEstablishmentId()"
+        heading="No active establishment"
+        message="You need to be a member of an Approved establishment to view evaluations."
+      />
 
-      <ng-container *ngIf="!loading()">
+      <app-loading *ngIf="activeEstablishmentId() && loading()" />
+
+      <ng-container *ngIf="activeEstablishmentId() && !loading()">
         <section class="card" *ngIf="pending().length">
           <h2>Left to evaluate</h2>
           <table class="table">
