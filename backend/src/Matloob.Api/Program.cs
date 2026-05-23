@@ -6,6 +6,7 @@ using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Persistence.Seed;
 using Matloob.Api.Infrastructure.Storage;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 
@@ -104,16 +105,40 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseDeveloperExceptionPage();
+    }
 
-        // Seed canonical reference / lookup data on Dev startup. Idempotent:
-        // each per-entity step skips a table that already has rows, so it is
-        // safe to run on every launch.
-        // Excluded in Testing/Production: WebApplicationFactory uses environment
-        // "Testing", and Production seeding goes through a dedicated migration
-        // job, not the API process.
-        using (var scope = app.Services.CreateScope())
+    // Auto-migrate on startup when Database:AutoMigrate=true. The flag is
+    // ON in appsettings.Development.json so `dotnet run` always brings the
+    // schema up to date in dev, and OFF by default everywhere else. Set
+    // Database__AutoMigrate=true on the host (or in appsettings.<env>.json)
+    // to enable in other environments — single-instance staging, throwaway
+    // PR previews, etc. Production typically keeps it off and applies
+    // migrations from a dedicated job before the API rolls out, so two
+    // replicas can't race on the migrations history table.
+    //
+    // Seeding runs only in Development (the test factory sets
+    // UseEnvironment("Testing"), and production reference data ships via
+    // the migration job).
+    var autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", false);
+    if (autoMigrate || app.Environment.IsDevelopment())
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (pending.Count > 0)
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Log.Information(
+                "Applying {Count} pending migration(s): {Migrations}",
+                pending.Count,
+                string.Join(", ", pending));
+            await db.Database.MigrateAsync();
+        }
+
+        if (app.Environment.IsDevelopment())
+        {
+            // Idempotent: each per-entity step skips a table that already
+            // has rows, so safe to run on every launch.
             await ReferenceDataSeeder.SeedAsync(db);
         }
     }
