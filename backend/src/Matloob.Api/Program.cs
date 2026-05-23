@@ -80,6 +80,25 @@ try
     // auth yet — that arrives in the next commit.
     builder.Services.AddMatloobAuth(builder.Configuration);
 
+    // CORS. Configured via Cors:AllowedOrigins so production can ship with
+    // an empty list (same-origin / reverse-proxy) and dev can allow the
+    // Angular admin at http://localhost:4200. Bearer tokens are sent via
+    // the Authorization header, not cookies, so AllowCredentials is off.
+    var corsAllowedOrigins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins")
+        .Get<string[]>() ?? Array.Empty<string>();
+    if (corsAllowedOrigins.Length > 0)
+    {
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy => policy
+                .WithOrigins(corsAllowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .WithExposedHeaders("Content-Disposition"));
+        });
+    }
+
     var app = builder.Build();
 
     if (app.Environment.IsDevelopment())
@@ -107,6 +126,14 @@ try
 
     // Translate unhandled exceptions (5xx) into ProblemDetails bodies.
     app.UseExceptionHandler();
+
+    // CORS runs BEFORE auth so the preflight OPTIONS request (which
+    // browsers send anonymously) gets the Access-Control-Allow-Origin
+    // header without first being rejected by JwtBearer.
+    if (corsAllowedOrigins.Length > 0)
+    {
+        app.UseCors();
+    }
 
     // Authentication / authorization run BEFORE the endpoint-routing terminal
     // middleware. No endpoint currently requires either, so anonymous traffic
