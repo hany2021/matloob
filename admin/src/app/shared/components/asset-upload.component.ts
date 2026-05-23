@@ -2,7 +2,12 @@ import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 
 import { AssetService } from '../../core/services/asset.service';
-import { AssetPurpose, AssetVisibility, UploadAssetResponse } from '../../core/models/asset';
+import {
+  ALLOWED_ASSET_CONTENT_TYPES,
+  AssetPurpose,
+  AssetVisibility,
+  UploadAssetResponse,
+} from '../../core/models/asset';
 import { ToastService } from './toast.service';
 
 /**
@@ -51,10 +56,16 @@ export class AssetUploadComponent {
   private readonly assetService = inject(AssetService);
   private readonly toast = inject(ToastService);
 
-  @Input() purpose: AssetPurpose = 'Other';
+  @Input() purpose: AssetPurpose = 'Generic';
   @Input() visibility?: AssetVisibility;
   @Input() multiple = false;
-  @Input() accept?: string;
+  /**
+   * Whitelist of accepted MIME types. Defaults to the backend's
+   * allowlist (PDF / JPEG / PNG) so users can't pick a file the upload
+   * endpoint will reject. Callers can narrow further (e.g. PDF-only
+   * for CR documents) but should not widen.
+   */
+  @Input() accept: string = ALLOWED_ASSET_CONTENT_TYPES;
   @Input() pickerLabel = 'Upload file';
 
   @Output() readonly uploadedAsset = new EventEmitter<UploadAssetResponse>();

@@ -17,7 +17,7 @@ export class AssetService {
 
   upload(
     file: File,
-    options: { purpose: AssetPurpose; visibility?: AssetVisibility } = { purpose: 'Other' },
+    options: { purpose: AssetPurpose; visibility?: AssetVisibility } = { purpose: 'Generic' },
   ): Observable<UploadAssetResponse> {
     const form = new FormData();
     form.append('file', file, file.name);

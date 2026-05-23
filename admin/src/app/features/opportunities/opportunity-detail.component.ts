@@ -87,7 +87,7 @@ import { UploadAssetResponse } from '../../core/models/asset';
             <p class="muted">No files uploaded.</p>
           </ng-template>
           <app-asset-upload
-            purpose="OpportunityMedia"
+            purpose="Generic"
             pickerLabel="Add file"
             (uploadedAsset)="onAssetUploaded($event)"
           />
