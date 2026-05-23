@@ -47,9 +47,3 @@ export interface CreateEvaluationRequest {
   matloob_evaluation?: number | null;
 }
 
-export interface UnevaluatedOffer {
-  id: string;
-  opportunity_name: string | null;
-  counterparty_name: string | null;
-  accepted_at: string | null;
-}

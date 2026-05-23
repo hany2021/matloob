@@ -3,7 +3,8 @@ import { Component, OnInit, computed, effect, inject, signal } from '@angular/co
 import { RouterLink } from '@angular/router';
 
 import { EvaluationService } from '../../core/services/evaluation.service';
-import { Evaluation, UnevaluatedOffer } from '../../core/models/evaluation';
+import { Evaluation } from '../../core/models/evaluation';
+import { Offer } from '../../core/models/offer';
 import { ProfileService } from '../../core/services/profile.service';
 import { LoadingComponent } from '../../shared/components/loading.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state.component';
@@ -11,7 +12,9 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
 /**
  * Lists evaluations the active establishment has authored, plus a
  * "left to evaluate" panel of accepted offers that don't yet have an
- * evaluation row.
+ * evaluation row. The unevaluated endpoint returns full Offer records
+ * (same shape as sent/received reads); we project the bits the table
+ * needs and fall back gracefully when a side of the offer isn't loaded.
  */
 @Component({
   selector: 'app-evaluation-list',
@@ -40,8 +43,8 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
             </thead>
             <tbody>
               <tr *ngFor="let o of pending()">
-                <td>{{ o.opportunity_name ?? '—' }}</td>
-                <td>{{ o.counterparty_name ?? '—' }}</td>
+                <td>{{ opportunityName(o) }}</td>
+                <td>{{ counterpartyName(o) }}</td>
                 <td>{{ o.accepted_at | date: 'mediumDate' }}</td>
                 <td>
                   <a
@@ -93,7 +96,7 @@ export class EvaluationListComponent implements OnInit {
 
   protected readonly loading = signal(true);
   protected readonly rows = signal<Evaluation[]>([]);
-  protected readonly pending = signal<UnevaluatedOffer[]>([]);
+  protected readonly pending = signal<Offer[]>([]);
 
   protected readonly activeEstablishmentId = this.profile.activeEstablishmentId;
   protected readonly activeName = computed(
@@ -108,6 +111,23 @@ export class EvaluationListComponent implements OnInit {
   }
 
   ngOnInit(): void {}
+
+  protected opportunityName(o: Offer): string {
+    return o.opportunity?.name ?? '—';
+  }
+
+  /**
+   * Pick the "other party" on the offer. If the active establishment
+   * was the sender, the applicant is the counterparty; otherwise the
+   * sender is. We don't know which side we are from the row alone, so
+   * we prefer whichever name is populated.
+   */
+  protected counterpartyName(o: Offer): string {
+    const applicantParty =
+      o.applicant?.applier?.name || o.applicant?.applier?.email;
+    const senderParty = o.sender?.name || o.sender?.email;
+    return applicantParty || senderParty || '—';
+  }
 
   private reload(eid: string): void {
     this.loading.set(true);

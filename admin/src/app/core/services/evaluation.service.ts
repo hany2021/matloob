@@ -5,8 +5,8 @@ import { ApiClient } from '../http/api-client';
 import {
   CreateEvaluationRequest,
   Evaluation,
-  UnevaluatedOffer,
 } from '../models/evaluation';
+import { Offer } from '../models/offer';
 
 /**
  * Evaluation endpoints scoped to an establishment. Evaluations attach
@@ -37,8 +37,14 @@ export class EvaluationService {
     );
   }
 
-  listUnevaluatedOffers(establishmentId: string): Observable<UnevaluatedOffer[]> {
-    return this.api.get<UnevaluatedOffer[]>(
+  /**
+   * Returns accepted offers the establishment hasn't evaluated yet.
+   * The backend returns full {@link Offer} records (the same shape as
+   * sent/received offer reads), so callers project the fields they
+   * need rather than working off a slimmed projection.
+   */
+  listUnevaluatedOffers(establishmentId: string): Observable<Offer[]> {
+    return this.api.get<Offer[]>(
       `/api/v1/establishments/${encodeURIComponent(establishmentId)}/offers/unevaluated`,
     );
   }
