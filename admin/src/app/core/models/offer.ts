@@ -71,22 +71,6 @@ export interface OfferListResponse {
   total: number;
 }
 
-export interface SendOfferRequest {
-  applicant_id: string;
-  job_title_id?: string;
-  job_title_category_id?: string;
-  sponsor_id?: string | null;
-  monthly_salary?: number | null;
-  daily_wage?: number | null;
-  number_of_working_days?: number | null;
-  currency?: string;
-  offer_validity_from?: string;
-  offer_validity_to?: string;
-  start_date?: string;
-  end_date?: string;
-  laborer_commitments?: string | null;
-}
-
 export interface CancelOfferRequest {
   offer_id: string;
   reason_id?: string;

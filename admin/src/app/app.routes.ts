@@ -135,13 +135,6 @@ export const routes: Routes = [
           ),
       },
       {
-        path: 'offers/new',
-        loadComponent: () =>
-          import('./features/offers/send-offer.component').then(
-            (m) => m.SendOfferComponent,
-          ),
-      },
-      {
         path: 'evaluations',
         loadComponent: () =>
           import('./features/evaluations/evaluation-list.component').then(

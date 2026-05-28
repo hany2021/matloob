@@ -16,7 +16,7 @@
 export const environment = {
   production: false,
   apiBaseUrl: 'http://localhost:5180',
-  identityAuthority: 'https://localhost:44310',
+  identityAuthority: 'http://10.100.6.4:55310',
   clientId: 'matloob:admin-angular',
   redirectUri: 'http://localhost:4200/auth/callback',
   postLogoutRedirectUri: 'http://localhost:4200/auth/logout',

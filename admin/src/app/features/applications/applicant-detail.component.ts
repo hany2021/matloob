@@ -9,8 +9,8 @@ import { LoadingComponent } from '../../shared/components/loading.component';
 
 /**
  * Single applicant page. Surfaces the applicant + opportunity snapshot
- * the backend returns, plus a "Send offer" shortcut that pre-fills the
- * application id into the offer form.
+ * the backend returns. Offer creation is the public frontend's job —
+ * deliberately not exposed in the admin SPA.
  */
 @Component({
   selector: 'app-applicant-detail',
@@ -45,13 +45,6 @@ import { LoadingComponent } from '../../shared/components/loading.component';
           <a class="btn btn-ghost" [routerLink]="['/opportunities', o.id]">Open opportunity</a>
         </section>
 
-        <section class="card actions">
-          <a
-            class="btn"
-            [routerLink]="['/offers/new']"
-            [queryParams]="{ application_id: a.id }"
-          >Send offer</a>
-        </section>
       </ng-container>
     </div>
   `,

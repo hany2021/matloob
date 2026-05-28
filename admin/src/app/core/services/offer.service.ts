@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ApiClient } from '../http/api-client';
-import { CancelOfferRequest, Offer, SendOfferRequest } from '../models/offer';
+import { CancelOfferRequest, Offer } from '../models/offer';
 
 /**
  * Wraps the establishment-side offer endpoints. The user-side flows
@@ -40,13 +40,6 @@ export class OfferService {
   listPendingAction(establishmentId: string): Observable<Offer[]> {
     return this.api.get<Offer[]>(
       `/api/v1/establishments/${encodeURIComponent(establishmentId)}/offers/pending-action`,
-    );
-  }
-
-  send(establishmentId: string, body: SendOfferRequest): Observable<Offer> {
-    return this.api.post<Offer>(
-      `/api/v1/establishments/${encodeURIComponent(establishmentId)}/offers/send`,
-      body,
     );
   }
 
