@@ -1,7 +1,7 @@
 # Session Resume — Matloob backoffice migration (.NET API ⇄ Next.js public frontend)
 
-> Handoff doc to continue work in a fresh session. Last updated end of the profile-editing build.
-> Read this top-to-bottom before doing anything.
+> Handoff doc to continue work in a fresh session. Last updated after Services+Products, Events, Notifications, the global { data } envelope + Laravel 422, the polymorphic `media` table, and a full frontend coverage sweep.
+> **Start at §6 (CURRENT STATE & NEXT STEPS)** — it has the live status, standing conventions, and the prioritized backlog. §0–§5 are the original mission/context.
 
 ---
 
@@ -112,23 +112,49 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 
 ---
 
-## 6. IMMEDIATE NEXT STEPS (new session)
+## 6. CURRENT STATE & NEXT STEPS (read this first)
 
-1. ✅ **DONE — Phase C verified + Phase D tests written.** Clean build, **388/388** tests pass (was 359; +29 Phase D mutator tests). See §4 Phase D.
-2. ⏳ **Smoke-test the profile mutators from the running frontend** (or curl with a fresh Bearer) — the one remaining profile-slice item. Needs a fresh `Bearer` from the browser Network tab (tokens expire ~60 min). The integration tests cover the contract, so this is now a confidence check rather than the primary verification.
-3. ✅ **DONE — global envelope shim (§5), whole-API scope. Full suite 393/393.**
-4. ✅ **DONE — validation errors now Laravel-style 422.** `Program.cs` `UseFastEndpoints`: `c.Errors.StatusCode = 422` + `c.Errors.ResponseBuilder = ValidationErrorResponse.FromFailures`. New `Features/Common/ValidationErrorResponse.cs` produces `{ message, errors: { snake_case_field: [...] } }` (maps FluentValidation PascalCase property names → snake_case to match the frontend's `laravel-precognition` field keys; leaves Laravel bracket keys like `education[0][degree]` untouched). Business-rule 400s are unaffected — they all pass an **explicit** status to `Send.ErrorsAsync`/`ProblemWriter`; only the auto-validator path moved 400→422 (2 tests updated). Full suite 393/393.
-5. ✅ **DONE — Services + Products slice** (branch `feature/api-migration-services-products`, committed in 4 phases A–D). Establishment-owned `Service`/`Product` (`{ id, name, description }`): domain + EF + migration `20260531122715_ServicesProductsSchema`; full CRUD at `establishments/me/services|products` (+ canonical `/api/v1/establishments/{establishmentId}/...`); services JSON, products multipart (frontend `postForm`); `EstablishmentResourceGuards` (member/admin read, +423-suspended write); me-profile `services`/`products` now populated. 13 tests; full suite **406/406**.
-   - Note: legacy Laravel had products read+create only, but the frontend has a products delete hook, so full CRUD was implemented for both (uniform, satisfies the frontend).
-6. ✅ **DONE — Events slice (core)** (branch `feature/api-migration-services-products`, committed in 4 phases A–D). `Event` aggregate (type/season/city FKs, dates, location, attendees, status, steps_done) + `EventOpportunityCategory` pivot; migration `20260531130934_EventsSchema`. Endpoints at `establishments/events` (+ canonical): grouped list, show (`{id:guid}`), progressive multipart create/update (5-step wizard via `EventWriteSupport`, precognition→204), delete, end, joined-events (created ∪ participated-via-offer), and `events/{types,suggested-locations,suggested-attendees}`. 13 tests; full suite **419/419**.
-   - **Deferred within Events** (noted in code): step_two **uploads**, step_three **event success criteria** (`SuccessManagementCriterion` is opportunity-bound — needs split-FK), and step_four **nested opportunity creation**. The event still persists; these are additive follow-ups.
-7. ✅ **DONE — Notifications (real), NOTIF-1** (branch `feature/api-migration-services-products`, 4 phases A–D). `Notification` aggregate (recipient morph user/establishment, type, title, message, resource, read_at) + migration `20260531154404_NotificationsSchema`. The 3 stubs replaced with DB-backed list (real pagination + `only_unread`), unread-count, mark-as-read (one/all); recipient resolved per route (user sub / establishment context). Outbox fanout: `IOutboxHandler` + dispatcher hook; `NotificationOutboxHandler` turns `offer.accepted/rejected` → sender-establishment DB notification and `offer.created` → applicant new-offer over the **NoOp SMS** channel (`ISmsSender`/`NoOpSmsSender` ported, no real provider). 8 tests; full suite **427/427**.
-   - **Deferred (NOTIF-1 scope)**: real email/SMS/push transport (Q-NOTIF-TRANSPORT); notifications whose triggering events aren't emitted yet (offer-is-active, opportunity fulfilled/expired, event started/ended) — wire these by emitting the missing outbox events in a follow-up. At-least-once dedup (no event→notification idempotency key yet).
-8. ✅ **DONE — polymorphic `media` table (Spatie-media equivalent) + event uploads.** `Media` link entity (`Matloob.Domain/Assets`): `asset_id`→Asset, `model_type`+`model_id` (polymorphic owner), `collection_name`, `order_column`, `uploaded_by/at` — migration `20260531165140_MediaSchema`. `Asset` stays the canonical blob; `media` decouples attachments so any entity attaches uniformly (no per-owner join table). `MediaSupport` helper (AddUpload via the Asset flow + media link, ClearCollection replace, ListForOwners/List → `{ id, name, url }`). **Event uploads wired through it**: `step_two[uploads][]` (≤4 MB, jpg/png/pdf) saved as `media` (model_type=`Event`, collection=`uploads`) on create/update; `EventReadMapper` projects them into `EventResponse.uploads`. `EstablishmentsApiFactory` now uses a temp `Storage:AssetsRoot`. Full suite **429/429**.
-   - **Still deferred** (legacy-scoped follow-ups): step-three **event success criteria** (criterion needs an Event split-FK first, then its own `media`), step-four **nested opportunity creation**, and emitting the **missing notification events**. Existing per-owner asset links (`opportunity_assets`, etc.) left as-is — `media` is the go-forward mechanism; migrating them onto `media` is optional and not done.
-9. ➡️ **NEXT**: remaining deferred follow-ups above, or other frontend gaps. Full slice history: `git log --oneline` on `feature/api-migration-services-products`. **Scope rule: implement only what the old Laravel project had — don't exceed it.**
-7. ⏳ Carryover: 400→422 reconciliation is DONE; remaining: live frontend smoke-test (fresh Bearer needed); apply the new migration to dev Postgres (auto-applies on next API start — it was offline during this session).
-6. ⏳ Frontend end-to-end smoke of the whole flow (needs a fresh Bearer; tokens expire ~60 min) — now that reads are enveloped and validation errors are 422, the previously-broken read screens + form validation should work.
+**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~33 commits, each a clean phase. **Full test suite: 432/432 green.** Run `git log --oneline` for the slice history. Dev Postgres was offline this session — migrations auto-apply on next API start (`Database:AutoMigrate=true` in Dev).
+
+### Done this session (all committed, all tested)
+- **Profile editing slice** (Phases A–D) — schema, `GET /profile` projection, the 7 mutators + per-id deletes, all `DataEnvelope<ProfileResponse>`. §4.
+- **Global `{ data }` envelope shim** — `Features/Common/ResponseEnvelopeShim` wired as the FastEndpoints `ResponseSerializer`; wraps **every** 2xx `/api/*` body (`{data}` / `{data,meta,links}`). `IBypassEnvelope` opts out already-enveloped/bare DTOs. §5.
+- **Laravel-style 422 validation** — `c.Errors.StatusCode=422` + `ValidationErrorResponse` → `{ message, errors:{ snake_case:[...] } }`. Business 400s pass explicit status, unaffected.
+- **Services + Products** — establishment-owned CRUD (`establishments/me/services|products`), me-profile populated. Migration `…ServicesProductsSchema`.
+- **Events (core)** — `Event` aggregate + `event_opportunity_category` pivot; grouped list / show / progressive multipart create-update / delete / end / joined-events / types / suggested-locations / suggested-attendees. **Event uploads** via the media table (below). Migration `…EventsSchema`.
+- **Notifications (NOTIF-1)** — `notifications` table + real list/unread-count/mark-as-read; outbox fanout (`IOutboxHandler` + `NotificationOutboxHandler`: offer.accepted/rejected → establishment DB notif, offer.created → new-offer NoOp SMS). `ISmsSender`/`NoOpSmsSender`. Migration `…NotificationsSchema`.
+- **Polymorphic `media` table over Asset** (Spatie-media equivalent) — `Media` (`asset_id`+`model_type`+`model_id`+`collection_name`+`order`); `MediaSupport` helper. `Asset` stays the canonical blob. **Go-forward attachment mechanism** (see Standing conventions below). Migration `…MediaSchema`.
+
+### Standing conventions (DON'T relearn — see also memory)
+- **Match legacy scope:** implement ONLY what the old Laravel project had; don't exceed it. (One pre-existing exception kept by user choice: products have update+delete though legacy didn't.)
+- **Attachments:** every upload → creates an `Asset` row (bytes in `IFileStorage`) and links it. New attachments use the **`media`** table via `MediaSupport`; don't add new per-owner join tables. Existing per-owner links (`*_asset_id` FK cols, `opportunity_assets`, `evaluation_assets`) left as-is.
+- **Envelope + 422** are global; new endpoints get them for free.
+- **EF migrations:** `dotnet ef migrations add` only, never `--no-build`.
+
+### 🔎 Frontend coverage sweep — remaining gaps (prioritized backlog)
+Cross-referenced every Next.js call vs. implemented routes. Almost everything is covered. Outstanding, in priority order:
+
+1. **Establishment profile editing — 5 endpoints (frontend-breaking, top priority).** The frontend PATCHes these directly but the new API only has read-only `GET me/profile`:
+   - `PATCH establishments/me/profile/general-info` (multipart)
+   - `PATCH establishments/me/profile/contact-info`
+   - `PATCH establishments/me/profile/experience`
+   - `PATCH establishments/me/profile/bank-account` — **needs backing**: no establishment bank-account record exists yet (me-profile returns `bank_account: null` placeholder).
+   - `PATCH establishments/me/profile/logo` (multipart) — **needs backing**: no logo storage; wire via the asset/`media` flow (`logo: null` placeholder today).
+   The `Establishment` entity already has the general-info/contact/experience fields (set at registration `basic-info`); these three are mostly just edit endpoints. Old Laravel had all five (`UpdateProfileLogoController` + general-info/contact-info/bank-account/experience controllers).
+2. **`GET establishments/events/{id}/drafted`** — "open event in editable form" read; not implemented.
+3. **Opportunity & event success-criteria** — `SuccessManagementCriterion` is opportunity-bound and **no write path creates criteria at all** (tables exist, read returns `[]`). Building it = the whole criteria feature (create + uploads via `success_management_criterion_assets`); event criteria additionally need an Event split-FK on the criterion.
+4. **Event step-4 nested opportunities** — wizard step accepted but not persisted.
+5. **Missing notification events** — emit `offer-is-active`, `opportunity fulfilled/expired`, `event started/ended` outbox events so their (already-designed) legacy notifications fire.
+6. **Verify, likely dead:** `PATCH/DELETE evaluations/{id}` (backend is create/read only — confirm the frontend actually edits/deletes evals); `POST/PATCH/DELETE users/opportunities` (users don't author opportunities — almost certainly dead route constants).
+
+### Not gaps
+- **Intentionally dropped** (Qiwa/Ajeer/billing): `establishments/invoices` (+`/{id}`,`/issue`), `contracts-regulations`, `offers/pending-invoice`, `offers/ajeer/check-eligibility`.
+- **Auth**: `users/auth/login`, `me/logout` → IdentityServer/OIDC, not this API.
+- Confirmed covered (don't re-flag): `sent-offers`/`received-offers`/`offers/pending-action`, `opportunities/categories`, `other-evaluation` (GET), all of profile/services/products/events/notifications/OAO.
+
+### Other wrap-up
+- **Live frontend smoke-test** — needs a fresh Bearer from the browser (tokens expire ~60 min). Reads are enveloped + validation is 422, so previously-broken read screens + forms should work.
+- **Consolidate the branch** — review / merge `feature/api-migration-services-products` (or open a PR) and apply migrations to dev Postgres.
 
 ---
 
