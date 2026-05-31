@@ -114,9 +114,16 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 
 ## 6. CURRENT STATE & NEXT STEPS (read this first)
 
-**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~33 commits, each a clean phase. **Full test suite: 432/432 green.** Run `git log --oneline` for the slice history. Dev Postgres was offline this session — migrations auto-apply on next API start (`Database:AutoMigrate=true` in Dev).
+**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~37 commits, each a clean phase. **Full test suite: 449/449 green.** Run `git log --oneline` for the slice history. Dev Postgres was offline this session — migrations auto-apply on next API start (`Database:AutoMigrate=true` in Dev).
 
-### Done this session (all committed, all tested)
+### Done — establishment profile editing slice (all 5 endpoints, committed + tested)
+The 5 `PATCH establishments/me/profile/*` endpoints the frontend called but the API lacked. Every frontend mutator ignores the response body and refetches `GET me/profile`, so each returns the full refreshed profile (`DataEnvelope<EstablishmentMeProfileResponse>`) via the new shared **`EstablishmentProfileReadMapper`**; precognition requests short-circuit to 204; all resolve via `EstablishmentResourceGuards.ResolveForWrite` (active member/admin, 423 while Suspended).
+- **general-info** (multipart) / **contact-info** (JSON, cross-establishment uniqueness → 422) / **experience** (years_of_experience) — no schema; new post-approval edit methods on the `Establishment` aggregate (`EditGeneralInfo`/`EditContactInfo`/`SetYearsOfExperience`), distinct from the Draft-only `UpdateBasicInfo`.
+- **bank-account** — reshaped `BankAccount` to **ownerless + shared** by both owners via owner-side FKs (`User.BankAccountId` / `Establishment.BankAccountId`, unique 1:1). Wire contract unchanged on both sides (user bank JSON byte-identical). Migration `BankAccountSharedOwnership` moves the column with a data backfill before dropping `bank_accounts.user_id`. me/profile now projects `bank_account`.
+- **logo** (multipart) — Asset (Public) + polymorphic `media` table (modelType `Establishment`, collection `logo`) via `MediaSupport`, replace semantics. me/profile now projects `logo` as the asset URL. No migration.
+- 17 integration tests in `EstablishmentProfileEditTests.cs`.
+
+### Done previous session (all committed, all tested)
 - **Profile editing slice** (Phases A–D) — schema, `GET /profile` projection, the 7 mutators + per-id deletes, all `DataEnvelope<ProfileResponse>`. §4.
 - **Global `{ data }` envelope shim** — `Features/Common/ResponseEnvelopeShim` wired as the FastEndpoints `ResponseSerializer`; wraps **every** 2xx `/api/*` body (`{data}` / `{data,meta,links}`). `IBypassEnvelope` opts out already-enveloped/bare DTOs. §5.
 - **Laravel-style 422 validation** — `c.Errors.StatusCode=422` + `ValidationErrorResponse` → `{ message, errors:{ snake_case:[...] } }`. Business 400s pass explicit status, unaffected.
@@ -134,13 +141,7 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 ### 🔎 Frontend coverage sweep — remaining gaps (prioritized backlog)
 Cross-referenced every Next.js call vs. implemented routes. Almost everything is covered. Outstanding, in priority order:
 
-1. **Establishment profile editing — 5 endpoints (frontend-breaking, top priority).** The frontend PATCHes these directly but the new API only has read-only `GET me/profile`:
-   - `PATCH establishments/me/profile/general-info` (multipart)
-   - `PATCH establishments/me/profile/contact-info`
-   - `PATCH establishments/me/profile/experience`
-   - `PATCH establishments/me/profile/bank-account` — **needs backing**: no establishment bank-account record exists yet (me-profile returns `bank_account: null` placeholder).
-   - `PATCH establishments/me/profile/logo` (multipart) — **needs backing**: no logo storage; wire via the asset/`media` flow (`logo: null` placeholder today).
-   The `Establishment` entity already has the general-info/contact/experience fields (set at registration `basic-info`); these three are mostly just edit endpoints. Old Laravel had all five (`UpdateProfileLogoController` + general-info/contact-info/bank-account/experience controllers).
+1. **Establishment experience STORE — `POST establishments/me/profile/experience`** (the "Add experience" dialog, `AddExperienceDialog.tsx`). NOT part of the 5-endpoint profile-edit slice (which was the PATCH years-of-experience). Needs a whole new backing: an `EstablishmentExperience` table + a polymorphic `category` FK (event-type OR opportunity-category by `type`), and projecting the `experiences[]` array in me/profile (currently `[]`). Old Laravel had `StoreProfileExperienceController` + `EstablishmentExperienceResource`. Frontend uses laravel-precognition. **Scope decision pending** (defer vs build) — was raised, not yet answered.
 2. **`GET establishments/events/{id}/drafted`** — "open event in editable form" read; not implemented.
 3. **Opportunity & event success-criteria** — `SuccessManagementCriterion` is opportunity-bound and **no write path creates criteria at all** (tables exist, read returns `[]`). Building it = the whole criteria feature (create + uploads via `success_management_criterion_assets`); event criteria additionally need an Event split-FK on the criterion.
 4. **Event step-4 nested opportunities** — wizard step accepted but not persisted.
