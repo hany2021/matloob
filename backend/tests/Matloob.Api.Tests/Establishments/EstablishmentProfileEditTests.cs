@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
@@ -30,9 +31,16 @@ public sealed class EstablishmentProfileEditTests
     private static readonly TestUser BankUser = new("estab-prof-bank-1", new[] { "matloob_user" });
     private static readonly TestUser BankUpsertUser = new("estab-prof-bank-2", new[] { "matloob_user" });
     private static readonly TestUser BankValidationUser = new("estab-prof-bank-3", new[] { "matloob_user" });
+    private static readonly TestUser LogoUser = new("estab-prof-logo-1", new[] { "matloob_user" });
+    private static readonly TestUser LogoValidationUser = new("estab-prof-logo-2", new[] { "matloob_user" });
 
     private static readonly Guid BankId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private const string ValidIban = "SA0380000000608010167519";
+
+    // Minimal PNG header bytes — content is never decoded, only the part's
+    // Content-Type and size are inspected.
+    private static readonly byte[] PngBytes =
+        { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02, 0x03 };
 
     public EstablishmentProfileEditTests(EstablishmentsApiFactory factory) => _factory = factory;
 
@@ -47,6 +55,8 @@ public sealed class EstablishmentProfileEditTests
         await Helpers.SeedLocalUserAsync(_factory, BankUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, BankUpsertUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, BankValidationUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, LogoUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, LogoValidationUser.Sub);
 
         using var scope = _factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -329,7 +339,88 @@ public sealed class EstablishmentProfileEditTests
         Assert.Equal(JsonValueKind.Null, bankAccount.ValueKind);
     }
 
+    // -- logo -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Logo_Uploaded_AndGetReflects()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-LOGO", LogoUser.Sub);
+        var client = _factory.CreateClientFor(LogoUser);
+
+        using var form = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } };
+        AddFile(form, "logo", PngBytes, "image/png", "logo.png");
+        var response = await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var data = await GetProfileAsync(client, id);
+        var logo = data.GetProperty("logo");
+        Assert.Equal(JsonValueKind.String, logo.ValueKind);
+        Assert.StartsWith("/api/v1/assets/", logo.GetString());
+    }
+
+    [Fact]
+    public async Task Logo_Replaces_Previous_SingleLogo()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-LOGO-R", LogoUser.Sub);
+        var client = _factory.CreateClientFor(LogoUser);
+
+        using (var form1 = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } })
+        {
+            AddFile(form1, "logo", PngBytes, "image/png", "first.png");
+            (await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form1))
+                .EnsureSuccessStatusCode();
+        }
+        var firstUrl = (await GetProfileAsync(client, id)).GetProperty("logo").GetString();
+
+        using (var form2 = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } })
+        {
+            AddFile(form2, "logo", PngBytes, "image/png", "second.png");
+            (await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form2))
+                .EnsureSuccessStatusCode();
+        }
+        var secondUrl = (await GetProfileAsync(client, id)).GetProperty("logo").GetString();
+
+        // Replace semantics: a new asset URL, and only one logo media row remains.
+        Assert.NotEqual(firstUrl, secondUrl);
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var modelId = id.ToString();
+        Assert.Equal(1, await db.Media.CountAsync(m =>
+            m.ModelType == "Establishment" && m.ModelId == modelId && m.CollectionName == "logo"));
+    }
+
+    [Fact]
+    public async Task Logo_NonImage_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-LOGO-BAD", LogoValidationUser.Sub);
+        var client = _factory.CreateClientFor(LogoValidationUser);
+
+        using var form = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } };
+        AddFile(form, "logo", new byte[] { 1, 2, 3 }, "text/plain", "note.txt");
+        var response = await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Logo_Missing_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-LOGO-MISS", LogoValidationUser.Sub);
+        var client = _factory.CreateClientFor(LogoValidationUser);
+
+        using var form = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } };
+        var response = await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
     // -- helpers --------------------------------------------------------------
+
+    private static void AddFile(
+        MultipartFormDataContent form, string name, byte[] bytes, string contentType, string fileName)
+    {
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(file, name, fileName);
+    }
 
     private async Task<JsonElement> GetProfileAsync(HttpClient client, Guid id)
     {

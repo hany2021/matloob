@@ -1,3 +1,4 @@
+using Matloob.Api.Features.Common;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,12 @@ namespace Matloob.Api.Features.Establishments.Profile;
 /// </summary>
 public static class EstablishmentProfileReadMapper
 {
+    /// <summary>Polymorphic <c>media</c> model type for establishment attachments.</summary>
+    public const string ModelType = "Establishment";
+
+    /// <summary>Media collection holding the single establishment logo.</summary>
+    public const string LogoCollection = "logo";
+
     public static async Task<EstablishmentMeProfileResponse> BuildAsync(
         AppDbContext db, Establishment e, CancellationToken ct)
     {
@@ -38,14 +45,18 @@ public static class EstablishmentProfileReadMapper
                 ba.Id, ba.Name, ba.Iban, new EstablishmentBankRef(b.Id, b.Name)))
             .FirstOrDefaultAsync(ct);
 
-        return BuildResponse(e, services, products, bankAccount);
+        var logo = await MediaSupport.ListAsync(db, ModelType, e.Id.ToString(), LogoCollection, ct);
+        var logoUrl = logo.Count > 0 ? logo[0].Url : null;
+
+        return BuildResponse(e, services, products, bankAccount, logoUrl);
     }
 
     private static EstablishmentMeProfileResponse BuildResponse(
         Establishment e,
         IReadOnlyList<object> services,
         IReadOnlyList<object> products,
-        EstablishmentBankAccountBlock? bankAccount)
+        EstablishmentBankAccountBlock? bankAccount,
+        string? logoUrl)
     {
         var general = new EstablishmentGeneralInfoBlock
         {
@@ -102,7 +113,7 @@ public static class EstablishmentProfileReadMapper
             Name = e.Name,
             Email = e.Email,
             ProfileCompletePercentage = 0,
-            Logo = null,
+            Logo = logoUrl,
             Profile = profile,
             Rate = null,
             TotalReviews = null,
