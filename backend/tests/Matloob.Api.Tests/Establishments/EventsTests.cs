@@ -359,4 +359,114 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == id);
     }
+
+    // ===================== drafted (open in editable form) =====================
+
+    private async Task<JsonElement> GetDraftedAsync(HttpClient owner, Guid est, Guid id)
+    {
+        var resp = await owner.GetAsync($"/api/establishments/events/{id}/drafted?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        return doc.RootElement.DataOf().Clone();
+    }
+
+    [Fact]
+    public async Task Drafted_StepOneOnly_ReturnsStepOne_OmitsLaterSteps()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DRAFT1");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "Draft Wizard");
+
+        var data = await GetDraftedAsync(owner, est, id);
+        Assert.Equal(id, data.GetProperty("id").GetGuid());
+        Assert.Equal(1, data.GetProperty("steps_done").GetInt32());
+        Assert.Equal(0, data.GetProperty("opportunities").GetArrayLength());
+
+        var s1 = data.GetProperty("step_one");
+        Assert.Equal(EventTypeId, s1.GetProperty("type_uuid").GetGuid());
+        Assert.Equal("Draft Wizard", s1.GetProperty("name").GetString());
+
+        // Steps the draft hasn't reached are omitted (progressive payload).
+        Assert.False(data.TryGetProperty("step_two", out _));
+        Assert.False(data.TryGetProperty("step_three", out _));
+        Assert.False(data.TryGetProperty("step_four", out _));
+    }
+
+    [Fact]
+    public async Task Drafted_AfterStepTwo_IncludesScheduleAndEmptyUploads()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DRAFT2");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+        (await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}",
+            Form(StepTwo("2026-12-01", "2026-12-05")))).EnsureSuccessStatusCode();
+
+        var data = await GetDraftedAsync(owner, est, id);
+        Assert.True(data.TryGetProperty("step_one", out _));
+        var s2 = data.GetProperty("step_two");
+        Assert.Equal("2026-12-01", s2.GetProperty("start_date").GetString());
+        Assert.Equal(100, s2.GetProperty("min_attendees").GetInt32());
+        Assert.Equal(24.7m, s2.GetProperty("lat").GetDecimal());
+        Assert.Equal(0, s2.GetProperty("uploads").GetArrayLength());
+        Assert.False(data.TryGetProperty("step_four", out _));
+    }
+
+    [Fact]
+    public async Task Drafted_AfterStepFour_IncludesCategories_AndEmptyStepThree()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DRAFT4");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+        (await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}",
+            Form(("step_four[opportunities_categories][]", CategoryId.ToString())))).EnsureSuccessStatusCode();
+
+        var data = await GetDraftedAsync(owner, est, id);
+        Assert.Equal(4, data.GetProperty("steps_done").GetInt32());
+
+        var cats = data.GetProperty("step_four").GetProperty("opportunities_categories");
+        Assert.Equal(1, cats.GetArrayLength());
+        Assert.Equal(CategoryId, cats[0].GetGuid());
+
+        // step_three exists but success criteria are not backed yet -> [].
+        Assert.Equal(0, data.GetProperty("step_three").GetProperty("success_criteria").GetArrayLength());
+        Assert.Equal(0, data.GetProperty("opportunities").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Drafted_WithUploads_ProjectsStepTwoUploads()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DRAFT-UP");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        foreach (var (k, v) in StepTwo("2099-04-01", "2099-04-05")) form.Add(new StringContent(v), k);
+        var png = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        png.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        form.Add(png, "step_two[uploads][]", "cover.png");
+        (await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}", form)).EnsureSuccessStatusCode();
+
+        var uploads = (await GetDraftedAsync(owner, est, id)).GetProperty("step_two").GetProperty("uploads");
+        Assert.Equal(1, uploads.GetArrayLength());
+        Assert.Equal("cover.png", uploads[0].GetProperty("name").GetString());
+        Assert.Contains("/api/v1/assets/", uploads[0].GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task Drafted_Unknown_Returns404_AndAnonymous401()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DRAFT-404");
+        var owner = Owner();
+
+        var unknown = await owner.GetAsync(
+            $"/api/establishments/events/{Guid.NewGuid()}/drafted?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        var anon = _factory.CreateClientFor(null);
+        var anonResp = await anon.GetAsync($"/api/establishments/events/{Guid.NewGuid()}/drafted");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonResp.StatusCode);
+    }
 }
