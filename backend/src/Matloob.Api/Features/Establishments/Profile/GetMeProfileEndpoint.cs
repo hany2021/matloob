@@ -144,11 +144,28 @@ public sealed class GetMeProfileEndpoint
             return;
         }
 
-        var response = BuildResponse(establishment);
+        var services = await _db.Services
+            .AsNoTracking()
+            .Where(s => s.EstablishmentId == resolvedId)
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => (object)new Services.ServiceResponse(s.Id, s.Name, s.Description))
+            .ToListAsync(ct);
+
+        var products = await _db.Products
+            .AsNoTracking()
+            .Where(p => p.EstablishmentId == resolvedId)
+            .OrderByDescending(p => p.CreatedAt)
+            .Select(p => (object)new Products.ProductResponse(p.Id, p.Name, p.Description))
+            .ToListAsync(ct);
+
+        var response = BuildResponse(establishment, services, products);
         await Send.OkAsync(response, ct);
     }
 
-    private static EstablishmentMeProfileResponse BuildResponse(Establishment e)
+    private static EstablishmentMeProfileResponse BuildResponse(
+        Establishment e,
+        IReadOnlyList<object> services,
+        IReadOnlyList<object> products)
     {
         var general = new EstablishmentGeneralInfoBlock
         {
@@ -189,9 +206,9 @@ public sealed class GetMeProfileEndpoint
         {
             GeneralInfo = general,
             ContactInfo = contact,
+            Services = services,
+            Products = products,
             // Placeholders -- backing concept not migrated yet.
-            Services = [],
-            Products = [],
             BankAccount = null,
             Participations = [],
             Evaluations = [],
