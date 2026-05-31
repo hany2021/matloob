@@ -148,11 +148,11 @@ Cross-referenced every Next.js call vs. implemented routes. Almost everything is
 2. **Opportunity & event success-criteria** — `SuccessManagementCriterion` is opportunity-bound and **no write path creates criteria at all** (tables exist, read returns `[]`). Building it = the whole criteria feature (create + uploads via `success_management_criterion_assets`); event criteria additionally need an Event split-FK on the criterion. (Also unblocks `step_three.success_criteria` in the drafted-event read, currently `[]`.)
 3. **Event step-4 nested opportunities** — wizard step accepted but not persisted. (Also unblocks `opportunities[]` in the drafted-event read, currently `[]`.)
 4. **Missing notification events** — emit `offer-is-active`, `opportunity fulfilled/expired`, `event started/ended` outbox events so their (already-designed) legacy notifications fire.
-5. **Verify, likely dead:** `PATCH/DELETE evaluations/{id}` (backend is create/read only — confirm the frontend actually edits/deletes evals); `POST/PATCH/DELETE users/opportunities` (users don't author opportunities — almost certainly dead route constants).
 
 ### Not gaps
 - **Intentionally dropped** (Qiwa/Ajeer/billing): `establishments/invoices` (+`/{id}`,`/issue`), `contracts-regulations`, `offers/pending-invoice`, `offers/ajeer/check-eligibility`.
 - **Auth**: `users/auth/login`, `me/logout` → IdentityServer/OIDC, not this API.
+- **Verified dead route constants (no frontend invocation, confirmed this session):** `PATCH/DELETE evaluations/{id}` (frontend only calls `evaluations.create` + list/show); `POST/PATCH/DELETE users/opportunities` (users never author opportunities); `PATCH/DELETE establishments/me/opportunities/{id}` (frontend uses only `create` + `end`, both implemented in `Features/Opportunities/Mine/`).
 - Confirmed covered (don't re-flag): `sent-offers`/`received-offers`/`offers/pending-action`, `opportunities/categories`, `other-evaluation` (GET), all of profile/services/products/events/notifications/OAO.
 
 ### Other wrap-up
