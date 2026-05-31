@@ -54,6 +54,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<EstablishmentMember> EstablishmentMembers => Set<EstablishmentMember>();
     public DbSet<EstablishmentChangeRequest> EstablishmentChangeRequests => Set<EstablishmentChangeRequest>();
 
+    // Establishment profile children: services + products offered.
+    public DbSet<Service> Services => Set<Service>();
+    public DbSet<Product> Products => Set<Product>();
+
     // Append-only audit. Not soft-deletable -- inherits BaseEntity, not BaseAuditableEntity.
     public DbSet<EstablishmentReviewHistory> EstablishmentReviewHistory => Set<EstablishmentReviewHistory>();
 
