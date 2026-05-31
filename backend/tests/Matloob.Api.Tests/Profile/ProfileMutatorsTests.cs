@@ -463,6 +463,23 @@ public sealed class ProfileMutatorsTests
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task Education_WithCopyFile_StoresAndReturnsAssetUrl()
+    {
+        var client = ClientFor("edu-copyfile");
+        var form = new MultipartFormDataContent();
+        AddField(form, "education[0][degree]", "bachelor");
+        AddField(form, "education[0][gpa_system]", "4");
+        AddField(form, "education[0][gpa]", "3.5");
+        AddField(form, "education[0][graduation_year]", "2020");
+        AddFile(form, "education[0][copy]", PngBytes, "image/png", "degree.png");
+
+        var data = await ReadDataAsync(await SendMultipartAsync(client, EducationUrl, form));
+        var copy = data.GetProperty("education")[0].GetProperty("copy");
+        Assert.Equal(JsonValueKind.Object, copy.ValueKind);
+        Assert.Contains("/api/v1/assets/", copy.GetProperty("url").GetString());
+    }
+
     // ======================================================================
     // certificates (multipart, no file)
     // ======================================================================
@@ -502,6 +519,22 @@ public sealed class ProfileMutatorsTests
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task Certificate_WithCopyFile_StoresAndReturnsAssetUrl()
+    {
+        var client = ClientFor("cert-copyfile");
+        var form = new MultipartFormDataContent();
+        AddField(form, "certificates[0][name]", "Safety Level 1");
+        AddField(form, "certificates[0][issued_by]", "NEC Academy");
+        AddField(form, "certificates[0][issued_at]", "2021-06-01");
+        AddFile(form, "certificates[0][copy]", PngBytes, "image/png", "cert.png");
+
+        var data = await ReadDataAsync(await SendMultipartAsync(client, CertificatesUrl, form));
+        var copy = data.GetProperty("certificates")[0].GetProperty("copy");
+        Assert.Equal(JsonValueKind.Object, copy.ValueKind);
+        Assert.Contains("/api/v1/assets/", copy.GetProperty("url").GetString());
+    }
+
     // ======================================================================
     // interest (multipart, no file)
     // ======================================================================
@@ -517,6 +550,23 @@ public sealed class ProfileMutatorsTests
 
         Assert.Equal(1, data.GetProperty("professions").GetArrayLength());
         Assert.Equal(ChildCategoryId, data.GetProperty("professions")[0].GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task Interest_SupportiveDocWithFile_StoresAndReturnsAssetUrl()
+    {
+        var client = ClientFor("int-docfile");
+        var form = new MultipartFormDataContent();
+        AddField(form, "professions[0][id]", ChildCategoryId.ToString());
+        AddField(form, "supportive_documents[0][name]", "Portfolio");
+        AddFile(form, "supportive_documents[0][file]", PngBytes, "image/png", "portfolio.png");
+
+        var data = await ReadDataAsync(await SendMultipartAsync(client, InterestUrl, form));
+        var docs = data.GetProperty("supportive_documents");
+        Assert.Equal(1, docs.GetArrayLength());
+        var file = docs[0].GetProperty("file");
+        Assert.Equal(JsonValueKind.Object, file.ValueKind);
+        Assert.Contains("/api/v1/assets/", file.GetProperty("url").GetString());
     }
 
     [Fact]
