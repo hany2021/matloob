@@ -420,6 +420,55 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
         if (cr.ProposedEstablishmentSize is { } size) EstablishmentSize = size;
         if (cr.ProposedAdditionalContactNumber is { } additionalContact) AdditionalContactNumber = additionalContact;
     }
+
+    // --- Post-approval profile editing (Laravel Establishments/Me/Profile) ---
+    // These mirror the legacy UpdateProfile{GeneralInfo,ContactInfo,Experience}
+    // controllers. Unlike UpdateBasicInfo (Draft/Rejected-only self-service
+    // registration), these are the live profile-edit surface used while the
+    // establishment is Approved. They deliberately do NOT check
+    // IsEditableByCreator — the endpoint owns the status gate (writes are blocked
+    // with 423 while Suspended via EstablishmentResourceGuards.ResolveForWrite).
+
+    /// <summary>
+    /// Edit the public general-info section (Laravel
+    /// <c>UpdateProfileGeneralInfoController</c>). Only the fields the profile
+    /// form submits are touched; address parts captured at registration
+    /// (street / city / district / additional_number) are preserved.
+    /// </summary>
+    public void EditGeneralInfo(
+        string description,
+        decimal latitude,
+        decimal longitude,
+        string buildingNumber,
+        string? postalCode,
+        string website)
+    {
+        Description = NormalizeOptional(description);
+        Latitude = latitude;
+        Longitude = longitude;
+        BuildingNumber = NormalizeOptional(buildingNumber);
+        PostalCode = NormalizeOptional(postalCode);
+        Website = NormalizeOptional(website);
+    }
+
+    /// <summary>
+    /// Edit the contact-info section (Laravel
+    /// <c>UpdateProfileContactInfoController</c>): phone (legacy
+    /// <c>contact_number</c>), additional contact number, and email — all three
+    /// collapsed onto the establishment row in the new schema.
+    /// </summary>
+    public void EditContactInfo(string contactNumber, string additionalContactNumber, string email)
+    {
+        Phone = NormalizeRequired(contactNumber);
+        AdditionalContactNumber = NormalizeOptional(additionalContactNumber);
+        Email = NormalizeRequired(email);
+    }
+
+    /// <summary>
+    /// Set years of experience (Laravel <c>UpdateProfileExperienceController</c>,
+    /// which wrote <c>years_of_experience</c> onto the establishment profile).
+    /// </summary>
+    public void SetYearsOfExperience(int years) => YearsOfExperience = years;
 }
 
 /// <summary>
