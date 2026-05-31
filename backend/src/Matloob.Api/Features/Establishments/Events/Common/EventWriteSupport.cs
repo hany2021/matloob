@@ -159,6 +159,12 @@ internal static class EventWriteSupport
             }
         }
 
+        if (EventOpportunitiesSupport.HasOpportunities(form))
+        {
+            await EventOpportunitiesSupport.ValidateAsync(
+                db, EventOpportunitiesSupport.Parse(form), errors, ct);
+        }
+
         return errors;
     }
 
@@ -236,6 +242,15 @@ internal static class EventWriteSupport
                 db.EventOpportunityCategories.Add(new EventOpportunityCategory(@event.Id, id));
 
             @event.SetStepsDone(4);
+        }
+
+        // Nested opportunities (legacy EventService::handleOpportunities) — each
+        // creates an event-linked Opportunity with its uploads + success criteria.
+        if (EventOpportunitiesSupport.HasOpportunities(form))
+        {
+            await EventOpportunitiesSupport.ReplaceAsync(
+                db, storage, @event, EventOpportunitiesSupport.Parse(form),
+                @event.EstablishmentId, uploadedByUserId, now, ct);
         }
 
         if (PublishRequested(form)) @event.Publish(today);

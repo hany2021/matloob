@@ -3,6 +3,7 @@ using FastEndpoints;
 using Matloob.Api.Features.Common;
 using Matloob.Api.Features.Establishments.Common;
 using Matloob.Api.Features.Establishments.Events.Common;
+using Matloob.Api.Features.Opportunities.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
@@ -107,6 +108,8 @@ public sealed class GetDraftedEventEndpoint : EndpointWithoutRequest<DraftedEven
             stepFour = new DraftedStepFour(categoryIds);
         }
 
+        var opportunities = await ProjectOpportunitiesAsync(e.Id, ct);
+
         return new DraftedEventResponse
         {
             Id = e.Id,
@@ -115,8 +118,27 @@ public sealed class GetDraftedEventEndpoint : EndpointWithoutRequest<DraftedEven
             StepThree = stepThree,
             StepFour = stepFour,
             StepsDone = e.StepsDone,
-            Opportunities = [],
+            Opportunities = opportunities,
         };
+    }
+
+    private async Task<IReadOnlyList<object>> ProjectOpportunitiesAsync(Guid eventId, CancellationToken ct)
+    {
+        var opps = await _db.Opportunities.AsNoTracking()
+            .Where(o => o.EventId == eventId)
+            .OrderBy(o => o.CreatedAt)
+            .ToListAsync(ct);
+
+        var result = new List<object>(opps.Count);
+        foreach (var o in opps)
+        {
+            var bundle = await OpportunityReadQueries.LoadSidecarAsync(
+                _db, o, subClaim: null, establishmentApplicantId: null, ct);
+            result.Add(OpportunityReadMapper.Map(
+                o, bundle.Category, bundle.Issuer, bundle.Nationality,
+                bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount, bundle.IsApplied));
+        }
+        return result;
     }
 }
 

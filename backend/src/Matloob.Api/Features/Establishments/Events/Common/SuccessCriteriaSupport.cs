@@ -118,6 +118,24 @@ internal static class SuccessCriteriaSupport
         }
     }
 
+    /// <summary>
+    /// Create criteria for a freshly-created opportunity (no delete pass — the
+    /// owner is new), persisting any uploads.
+    /// </summary>
+    public static async Task AddForOpportunityAsync(
+        AppDbContext db, IFileStorage storage, Guid opportunityId,
+        IReadOnlyList<CriterionInput> items, string? uploadedByUserId,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        foreach (var input in items)
+        {
+            var criterion = SuccessManagementCriterion.ForOpportunity(
+                Guid.NewGuid(), opportunityId, input.Output!, input.SuccessCriteria!, input.Comment);
+            db.SuccessManagementCriteria.Add(criterion);
+            await AddUploadsAsync(db, storage, criterion.Id, input.Files, uploadedByUserId, now, ct);
+        }
+    }
+
     /// <summary>Persist a single criterion's uploads (Asset + criterion-asset join).</summary>
     public static async Task AddUploadsAsync(
         AppDbContext db, IFileStorage storage, Guid criterionId,

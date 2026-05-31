@@ -23,6 +23,8 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
     private static readonly Guid CategoryId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000002");
     private static readonly Guid LocationId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000003");
     private static readonly Guid AttendeeId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000004");
+    // Non-vacancy category: success criteria attach only to these (legacy rule).
+    private static readonly Guid NonVacancyCategoryId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000005");
 
     public EventsTests(EstablishmentsApiFactory factory)
     {
@@ -37,6 +39,7 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
 
         db.EventTypes.Add(new EventType(EventTypeId, "Conference", "desc", "bg.png", "icon.png"));
         db.OpportunityCategories.Add(new OpportunityCategory(CategoryId, "Ushering", forVacancy: true));
+        db.OpportunityCategories.Add(new OpportunityCategory(NonVacancyCategoryId, "Sponsorship", forVacancy: false));
         db.SuggestedLocations.Add(new SuggestedLocation(LocationId, "Riyadh Expo", 24.7m, 46.6m));
         db.SuggestedAttendees.Add(new SuggestedAttendee(AttendeeId, 100, 500));
         await db.SaveChangesAsync();
@@ -576,5 +579,106 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         var sc = gdoc.RootElement.DataOf().GetProperty("success_criteria");
         Assert.Equal(1, sc.GetArrayLength());
         Assert.Equal("Only one remains", sc[0].GetProperty("output").GetString());
+    }
+
+    // ===================== nested opportunities (step-four) =====================
+
+    private static void AddOpportunity(
+        MultipartFormDataContent form, int idx, Guid categoryId, string name)
+    {
+        void F(string k, string v) => form.Add(new StringContent(v), $"opportunities[{idx}][{k}]");
+        F("opportunity_category_uuid", categoryId.ToString());
+        F("name", name);
+        F("description", "A detailed opportunity description for the event.");
+        F("start_date", "2099-06-01");
+        F("end_date", "2099-06-10");
+        F("location_title", "Riyadh");
+        F("lat", "24.7");
+        F("lon", "46.6");
+        F("required_personnel", "5");
+    }
+
+    [Fact]
+    public async Task Event_NestedOpportunity_Created_AndDraftedReflects()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-OPP1");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddOpportunity(form, 0, CategoryId, "Ushering Team");
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form))
+            .EnsureSuccessStatusCode();
+
+        var drafted = await GetDraftedAsync(owner, est, id);
+        var opps = drafted.GetProperty("opportunities");
+        Assert.Equal(1, opps.GetArrayLength());
+        Assert.Equal("Ushering Team", opps[0].GetProperty("name").GetString());
+
+        // The opportunity's category is auto-attached to the event.
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await db.EventOpportunityCategories.AnyAsync(
+            p => p.EventId == id && p.OpportunityCategoryId == CategoryId));
+    }
+
+    [Fact]
+    public async Task Event_NestedOpportunity_NonVacancy_PersistsSuccessCriteria()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-OPP-SC");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddOpportunity(form, 0, NonVacancyCategoryId, "Gold Sponsorship");
+        form.Add(new StringContent(CritOutput), "opportunities[0][success_criteria][0][output]");
+        form.Add(new StringContent(CritSuccess), "opportunities[0][success_criteria][0][success_criteria]");
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form))
+            .EnsureSuccessStatusCode();
+
+        var opps = (await GetDraftedAsync(owner, est, id)).GetProperty("opportunities");
+        Assert.Equal(1, opps.GetArrayLength());
+        Assert.Equal(1, opps[0].GetProperty("success_criteria").GetArrayLength());
+
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var oppId = (await db.Opportunities.AsNoTracking().SingleAsync(o => o.EventId == id)).Id;
+        Assert.Equal(1, await db.SuccessManagementCriteria.CountAsync(c => c.OpportunityId == oppId));
+    }
+
+    [Fact]
+    public async Task Event_NestedOpportunity_Replaces_Previous()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-OPP-REP");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form1 = new MultipartFormDataContent();
+        AddOpportunity(form1, 0, CategoryId, "First Opp");
+        AddOpportunity(form1, 1, CategoryId, "Second Opp");
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form1))
+            .EnsureSuccessStatusCode();
+
+        var form2 = new MultipartFormDataContent();
+        AddOpportunity(form2, 0, CategoryId, "Only Opp");
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form2))
+            .EnsureSuccessStatusCode();
+
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await db.Opportunities.CountAsync(o => o.EventId == id));
+    }
+
+    [Fact]
+    public async Task Event_NestedOpportunity_UnknownCategory_Returns422()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-OPP-422");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddOpportunity(form, 0, Guid.NewGuid(), "Bad Category Opp");
+        var patch = await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, patch.StatusCode);
     }
 }
