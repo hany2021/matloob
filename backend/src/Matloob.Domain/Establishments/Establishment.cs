@@ -63,6 +63,13 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
 
     public string? AdditionalContactNumber { get; private set; }
 
+    /// <summary>
+    /// Owner-side FK to the establishment's single bank account (the
+    /// <c>BankAccount</c> aggregate is ownerless and shared with the user side).
+    /// Null until bank details are saved via the profile bank-account endpoint.
+    /// </summary>
+    public Guid? BankAccountId { get; private set; }
+
     // --- §3.3 Admin-controlled flags ----------------------------------------
     /// <summary>Set by admins post-approval. Gates sponsor-only flows.</summary>
     public bool IsSponsor { get; private set; }
@@ -469,6 +476,9 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
     /// which wrote <c>years_of_experience</c> onto the establishment profile).
     /// </summary>
     public void SetYearsOfExperience(int years) => YearsOfExperience = years;
+
+    /// <summary>Link the establishment to its bank account (set on first upsert).</summary>
+    public void SetBankAccount(Guid bankAccountId) => BankAccountId = bankAccountId;
 }
 
 /// <summary>

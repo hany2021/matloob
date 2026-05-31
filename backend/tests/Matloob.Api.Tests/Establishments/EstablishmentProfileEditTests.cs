@@ -1,8 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
 using Matloob.Api.Tests.Common;
+using Matloob.Domain.Reference;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Matloob.Api.Tests.Establishments;
 
@@ -23,6 +27,12 @@ public sealed class EstablishmentProfileEditTests
     private static readonly TestUser DupUser = new("estab-prof-dup-1", new[] { "matloob_user" });
     private static readonly TestUser ExperienceUser = new("estab-prof-exp-1", new[] { "matloob_user" });
     private static readonly TestUser ValidationUser = new("estab-prof-val-1", new[] { "matloob_user" });
+    private static readonly TestUser BankUser = new("estab-prof-bank-1", new[] { "matloob_user" });
+    private static readonly TestUser BankUpsertUser = new("estab-prof-bank-2", new[] { "matloob_user" });
+    private static readonly TestUser BankValidationUser = new("estab-prof-bank-3", new[] { "matloob_user" });
+
+    private static readonly Guid BankId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+    private const string ValidIban = "SA0380000000608010167519";
 
     public EstablishmentProfileEditTests(EstablishmentsApiFactory factory) => _factory = factory;
 
@@ -34,6 +44,17 @@ public sealed class EstablishmentProfileEditTests
         await Helpers.SeedLocalUserAsync(_factory, DupUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, ExperienceUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, ValidationUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, BankUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, BankUpsertUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, BankValidationUser.Sub);
+
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (!await db.Banks.AnyAsync(b => b.Id == BankId))
+        {
+            db.Banks.Add(new Bank(BankId, "Al Rajhi Bank"));
+            await db.SaveChangesAsync();
+        }
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -203,6 +224,109 @@ public sealed class EstablishmentProfileEditTests
 
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("years_of_experience", out _));
+    }
+
+    // -- bank-account ---------------------------------------------------------
+
+    [Fact]
+    public async Task BankAccount_Creates_AndGetReflects()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-BANK", BankUser.Sub);
+        var client = _factory.CreateClientFor(BankUser);
+
+        var response = await client.PatchAsJsonAsync(
+            $"/api/establishments/me/profile/bank-account?establishment_id={id}",
+            new { name = "Acme Events Co", bank_id = BankId, iban = ValidIban });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var bank = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("bank_account");
+        Assert.Equal("Acme Events Co", bank.GetProperty("name").GetString());
+        Assert.Equal(ValidIban, bank.GetProperty("iban").GetString());
+        Assert.Equal(BankId, bank.GetProperty("bank").GetProperty("id").GetGuid());
+        Assert.Equal("Al Rajhi Bank", bank.GetProperty("bank").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task BankAccount_SecondCall_Upserts_NoDuplicate()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-BANK2", BankUpsertUser.Sub);
+        var client = _factory.CreateClientFor(BankUpsertUser);
+
+        await client.PatchAsJsonAsync(
+            $"/api/establishments/me/profile/bank-account?establishment_id={id}",
+            new { name = "First Name", bank_id = BankId, iban = ValidIban });
+
+        Guid firstAccountId;
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            firstAccountId = (await db.Establishments.AsNoTracking()
+                .SingleAsync(e => e.Id == id)).BankAccountId!.Value;
+        }
+
+        var response = await client.PatchAsJsonAsync(
+            $"/api/establishments/me/profile/bank-account?establishment_id={id}",
+            new { name = "Second Name", bank_id = BankId, iban = ValidIban });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var bank = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("bank_account");
+        Assert.Equal("Second Name", bank.GetProperty("name").GetString());
+
+        using var scope2 = _factory.CreateDbScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<AppDbContext>();
+        var afterAccountId = (await db2.Establishments.AsNoTracking()
+            .SingleAsync(e => e.Id == id)).BankAccountId!.Value;
+        Assert.Equal(firstAccountId, afterAccountId);
+    }
+
+    [Fact]
+    public async Task BankAccount_InvalidIban_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-BANK-IBAN", BankValidationUser.Sub);
+        var client = _factory.CreateClientFor(BankValidationUser);
+
+        var response = await client.PatchAsJsonAsync(
+            $"/api/establishments/me/profile/bank-account?establishment_id={id}",
+            new { name = "Acme", bank_id = BankId, iban = "SA00INVALID" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("iban", out _));
+    }
+
+    [Fact]
+    public async Task BankAccount_UnknownBank_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-BANK-UNK", BankValidationUser.Sub);
+        var client = _factory.CreateClientFor(BankValidationUser);
+
+        var response = await client.PatchAsJsonAsync(
+            $"/api/establishments/me/profile/bank-account?establishment_id={id}",
+            new { name = "Acme", bank_id = Guid.NewGuid(), iban = ValidIban });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("bank_id", out _));
+    }
+
+    [Fact]
+    public async Task BankAccount_Precognition_StopsBeforeMutation_204()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-BANK-PRE", BankValidationUser.Sub);
+        var client = _factory.CreateClientFor(BankValidationUser);
+
+        var req = new HttpRequestMessage(
+            HttpMethod.Patch, $"/api/establishments/me/profile/bank-account?establishment_id={id}")
+        {
+            Content = JsonContent.Create(new { name = "Acme", bank_id = BankId, iban = ValidIban }),
+        };
+        req.Headers.Add("Precognition", "true");
+        var response = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // No account was created.
+        var bankAccount = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("bank_account");
+        Assert.Equal(JsonValueKind.Null, bankAccount.ValueKind);
     }
 
     // -- helpers --------------------------------------------------------------

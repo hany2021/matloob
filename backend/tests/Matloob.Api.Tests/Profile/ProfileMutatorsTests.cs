@@ -179,7 +179,17 @@ public sealed class ProfileMutatorsTests
     public async Task PersonalInfo_SecondCall_UpdatesExistingBankAccount()
     {
         var client = ClientFor("pi-upsert");
-        await SendJsonAsync(client, HttpMethod.Patch, PersonalInfoUrl, ValidPersonalInfo());
+        var firstData = await ReadDataAsync(
+            await SendJsonAsync(client, HttpMethod.Patch, PersonalInfoUrl, ValidPersonalInfo()));
+        var userId = firstData.GetProperty("id").GetGuid();
+
+        Guid firstAccountId;
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            firstAccountId = (await db.Users.AsNoTracking()
+                .SingleAsync(u => u.Id == userId)).BankAccountId!.Value;
+        }
 
         var second = (object)new
         {
@@ -197,11 +207,16 @@ public sealed class ProfileMutatorsTests
             await SendJsonAsync(client, HttpMethod.Patch, PersonalInfoUrl, second));
 
         Assert.Equal("mona2@example.test", data.GetProperty("email").GetString());
-        // Still exactly one bank account (upsert, not insert).
-        using var scope = _factory.CreateDbScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var userId = data.GetProperty("id").GetGuid();
-        Assert.Equal(1, await db.BankAccounts.CountAsync(b => b.UserId == userId));
+
+        // Upsert, not insert: the user still points at the SAME account row and
+        // its values were updated in place (no orphaned duplicate).
+        using var scope2 = _factory.CreateDbScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<AppDbContext>();
+        var afterAccountId = (await db2.Users.AsNoTracking()
+            .SingleAsync(u => u.Id == userId)).BankAccountId!.Value;
+        Assert.Equal(firstAccountId, afterAccountId);
+        var account = await db2.BankAccounts.AsNoTracking().SingleAsync(b => b.Id == afterAccountId);
+        Assert.Equal("Mona Updated", account.Name);
     }
 
     [Fact]

@@ -97,11 +97,15 @@ public sealed class UpdatePersonalInfoEndpoint
             cityId: req.CityId,
             regionId: req.RegionId);
 
-        var bank = await _db.BankAccounts.FirstOrDefaultAsync(b => b.UserId == user.Id, ct);
+        var bank = user.BankAccountId is null
+            ? null
+            : await _db.BankAccounts.FirstOrDefaultAsync(b => b.Id == user.BankAccountId, ct);
         if (bank is null)
         {
-            _db.BankAccounts.Add(new BankAccount(
-                Guid.NewGuid(), user.Id, req.BankId!.Value, req.Name!, req.Iban!));
+            var account = new BankAccount(
+                Guid.NewGuid(), req.BankId!.Value, req.Name!, req.Iban!);
+            _db.BankAccounts.Add(account);
+            user.SetBankAccount(account.Id);
         }
         else
         {

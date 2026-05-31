@@ -21,10 +21,7 @@ internal sealed class BankAccountConfiguration : IEntityTypeConfiguration<BankAc
             .HasForeignKey(x => x.BankId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // One active bank account per user.
-        builder.HasIndex(x => x.UserId)
-            .IsUnique()
-            .HasFilter("is_deleted = false")
-            .HasDatabaseName("ux_bank_accounts_user_active");
+        // Ownership is owner-side: User.BankAccountId / Establishment.BankAccountId
+        // each hold a unique FK to this table (configured on those entities).
     }
 }

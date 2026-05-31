@@ -63,6 +63,14 @@ internal sealed class EstablishmentConfiguration : IEntityTypeConfiguration<Esta
         builder.Property(x => x.SuspendedByAdminId).HasMaxLength(200);
         builder.Property(x => x.SuspensionReason).HasMaxLength(2000);
 
+        // Owner-side one-to-one FK to the shared, ownerless BankAccount
+        // (same aggregate the user side references). Restrict so a referenced
+        // account can't be deleted out from under the establishment.
+        builder.HasOne<Domain.Users.BankAccount>()
+            .WithOne()
+            .HasForeignKey<Establishment>(x => x.BankAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // §4 — partial unique CR-number across active lifecycle states. The
         // status column stores enum names (e.g. "Approved"), matching the
         // string-conversion above.

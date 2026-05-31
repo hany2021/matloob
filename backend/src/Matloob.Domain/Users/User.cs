@@ -84,6 +84,13 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
     /// <summary>Profile photo via the Asset GUID flow (replaces Spatie media).</summary>
     public Guid? PhotoAssetId { get; private set; }
 
+    /// <summary>
+    /// Owner-side FK to the user's single <see cref="BankAccount"/> (the account
+    /// is ownerless and shared by both User and Establishment owners). Null until
+    /// the user adds bank details.
+    /// </summary>
+    public Guid? BankAccountId { get; private set; }
+
     private User() { }
 
     /// <summary>
@@ -174,6 +181,9 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
     }
 
     public void SetPhoto(Guid? assetId) => PhotoAssetId = assetId;
+
+    /// <summary>Link the user to their bank account (set on first upsert).</summary>
+    public void SetBankAccount(Guid bankAccountId) => BankAccountId = bankAccountId;
 
     public void SetYearsOfExperience(int years) => YearsOfExperience = years;
 

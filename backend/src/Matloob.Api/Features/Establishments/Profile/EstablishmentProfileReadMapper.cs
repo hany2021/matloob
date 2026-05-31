@@ -31,13 +31,21 @@ public static class EstablishmentProfileReadMapper
             .Select(p => (object)new Products.ProductResponse(p.Id, p.Name, p.Description))
             .ToListAsync(ct);
 
-        return BuildResponse(e, services, products);
+        EstablishmentBankAccountBlock? bankAccount = e.BankAccountId is null ? null : await (
+            from ba in db.BankAccounts.AsNoTracking().Where(x => x.Id == e.BankAccountId)
+            join b in db.Banks.AsNoTracking() on ba.BankId equals b.Id
+            select new EstablishmentBankAccountBlock(
+                ba.Id, ba.Name, ba.Iban, new EstablishmentBankRef(b.Id, b.Name)))
+            .FirstOrDefaultAsync(ct);
+
+        return BuildResponse(e, services, products, bankAccount);
     }
 
     private static EstablishmentMeProfileResponse BuildResponse(
         Establishment e,
         IReadOnlyList<object> services,
-        IReadOnlyList<object> products)
+        IReadOnlyList<object> products,
+        EstablishmentBankAccountBlock? bankAccount)
     {
         var general = new EstablishmentGeneralInfoBlock
         {
@@ -80,8 +88,8 @@ public static class EstablishmentProfileReadMapper
             ContactInfo = contact,
             Services = services,
             Products = products,
+            BankAccount = bankAccount,
             // Placeholders -- backing concept not migrated yet.
-            BankAccount = null,
             Participations = [],
             Evaluations = [],
             Reviews = [],

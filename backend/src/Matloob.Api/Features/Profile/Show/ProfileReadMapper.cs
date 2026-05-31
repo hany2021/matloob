@@ -55,8 +55,8 @@ public static class ProfileReadMapper
             select new { c.Id, c.Title, c.Description, c.Icon, c.ForVacancy, c.IsOther, up.Other })
             .ToListAsync(ct);
 
-        var bank = await (
-            from ba in db.BankAccounts.AsNoTracking().Where(x => x.UserId == userId)
+        var bank = user.BankAccountId is null ? null : await (
+            from ba in db.BankAccounts.AsNoTracking().Where(x => x.Id == user.BankAccountId)
             join b in db.Banks.AsNoTracking() on ba.BankId equals b.Id
             select new { ba.Id, ba.Name, ba.Iban, BankId = b.Id, BankName = b.Name })
             .FirstOrDefaultAsync(ct);

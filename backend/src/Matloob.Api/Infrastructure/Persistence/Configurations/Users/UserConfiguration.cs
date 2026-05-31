@@ -51,6 +51,13 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasForeignKey(x => x.PhotoAssetId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Owner-side one-to-one FK to the shared, ownerless BankAccount. Restrict
+        // so a referenced account can't be deleted out from under the user.
+        builder.HasOne<BankAccount>()
+            .WithOne()
+            .HasForeignKey<User>(x => x.BankAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Partial unique on IdentityId across non-soft-deleted rows. The
         // sync service's lookup (by sub claim) is the hot path.
         builder.HasIndex(x => x.IdentityId)

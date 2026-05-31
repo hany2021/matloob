@@ -29,7 +29,8 @@ public static class ProfileMutationSupport
         AppDbContext db, User user, CancellationToken ct)
     {
         var userId = user.Id;
-        var hasBank = await db.BankAccounts.AnyAsync(x => x.UserId == userId, ct);
+        var hasBank = user.BankAccountId is not null
+            && await db.BankAccounts.AnyAsync(x => x.Id == user.BankAccountId, ct);
         var hasEducation = await db.UserEducation.AnyAsync(x => x.UserId == userId, ct);
         var hasProfessions = await db.UserProfessions.AnyAsync(x => x.UserId == userId, ct);
 

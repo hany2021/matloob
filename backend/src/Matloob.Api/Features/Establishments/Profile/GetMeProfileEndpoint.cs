@@ -307,3 +307,18 @@ public sealed class EstablishmentContactInfoBlock
     [JsonPropertyName("email")]
     public string? Email { get; init; }
 }
+
+/// <summary>
+/// <c>bank_account</c> block — mirrors the legacy <c>BankAccountResource</c>
+/// (id + name + iban + nested bank ref), matching the frontend's
+/// <c>BankAccount</c> type.
+/// </summary>
+public sealed record EstablishmentBankAccountBlock(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("iban")] string Iban,
+    [property: JsonPropertyName("bank")] EstablishmentBankRef Bank);
+
+public sealed record EstablishmentBankRef(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name);
