@@ -49,6 +49,9 @@ public sealed class AppDbContext : DbContext
     // Uploaded files (bytes live in IFileStorage; this is the metadata table).
     public DbSet<Asset> Assets => Set<Asset>();
 
+    // Polymorphic attachment links (Asset <-> any owner via model_type/model_id).
+    public DbSet<Media> Media => Set<Media>();
+
     // Establishment onboarding aggregate + sibling entities.
     public DbSet<Establishment> Establishments => Set<Establishment>();
     public DbSet<EstablishmentDocument> EstablishmentDocuments => Set<EstablishmentDocument>();
