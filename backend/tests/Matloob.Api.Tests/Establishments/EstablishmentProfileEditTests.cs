@@ -33,6 +33,12 @@ public sealed class EstablishmentProfileEditTests
     private static readonly TestUser BankValidationUser = new("estab-prof-bank-3", new[] { "matloob_user" });
     private static readonly TestUser LogoUser = new("estab-prof-logo-1", new[] { "matloob_user" });
     private static readonly TestUser LogoValidationUser = new("estab-prof-logo-2", new[] { "matloob_user" });
+    private static readonly TestUser ExpEventUser = new("estab-prof-exp-store-1", new[] { "matloob_user" });
+    private static readonly TestUser ExpOppUser = new("estab-prof-exp-store-2", new[] { "matloob_user" });
+    private static readonly TestUser ExpValUser = new("estab-prof-exp-store-3", new[] { "matloob_user" });
+
+    private static readonly Guid ExpEventTypeId = Guid.Parse("55555555-5555-5555-5555-555555555551");
+    private static readonly Guid ExpOppCategoryId = Guid.Parse("55555555-5555-5555-5555-555555555552");
 
     private static readonly Guid BankId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private const string ValidIban = "SA0380000000608010167519";
@@ -57,12 +63,21 @@ public sealed class EstablishmentProfileEditTests
         await Helpers.SeedLocalUserAsync(_factory, BankValidationUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, LogoUser.Sub);
         await Helpers.SeedLocalUserAsync(_factory, LogoValidationUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, ExpEventUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, ExpOppUser.Sub);
+        await Helpers.SeedLocalUserAsync(_factory, ExpValUser.Sub);
 
         using var scope = _factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (!await db.Banks.AnyAsync(b => b.Id == BankId))
         {
             db.Banks.Add(new Bank(BankId, "Al Rajhi Bank"));
+            await db.SaveChangesAsync();
+        }
+        if (!await db.EventTypes.AnyAsync(t => t.Id == ExpEventTypeId))
+        {
+            db.EventTypes.Add(new EventType(ExpEventTypeId, "Conference", "desc", "bg.png", "icon.png"));
+            db.OpportunityCategories.Add(new OpportunityCategory(ExpOppCategoryId, "Ushering", forVacancy: true));
             await db.SaveChangesAsync();
         }
     }
@@ -410,6 +425,131 @@ public sealed class EstablishmentProfileEditTests
         using var form = new MultipartFormDataContent { { new StringContent("PATCH"), "_method" } };
         var response = await client.PostAsync($"/api/establishments/me/profile/logo?establishment_id={id}", form);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    // -- experience STORE (Add experience dialog) -----------------------------
+
+    [Fact]
+    public async Task ExperienceStore_Event_AndGetReflects()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-EXPS-EV", ExpEventUser.Sub);
+        var client = _factory.CreateClientFor(ExpEventUser);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/establishments/me/profile/experience?establishment_id={id}",
+            new
+            {
+                type = "event",
+                name = "Riyadh Season Opening",
+                category = ExpEventTypeId,
+                from = "2024-01-01",
+                to = "2024-03-01",
+                description = "Managed the opening ceremony.",
+            });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var experiences = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("experiences");
+        Assert.Equal(1, experiences.GetArrayLength());
+        var exp = experiences[0];
+        Assert.Equal("event", exp.GetProperty("type").GetString());
+        Assert.Equal("Event", exp.GetProperty("type_label").GetString());
+        Assert.Equal("Riyadh Season Opening", exp.GetProperty("name").GetString());
+        Assert.Equal("مشارك", exp.GetProperty("job_title").GetString());
+        Assert.Equal("2024-01-01", exp.GetProperty("from").GetString());
+        Assert.Equal("2024-03-01", exp.GetProperty("to").GetString());
+    }
+
+    [Fact]
+    public async Task ExperienceStore_Opportunity_AndGetReflects()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-EXPS-OP", ExpOppUser.Sub);
+        var client = _factory.CreateClientFor(ExpOppUser);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/establishments/me/profile/experience?establishment_id={id}",
+            new
+            {
+                type = "opportunity",
+                name = "Hospitality Staffing",
+                category = ExpOppCategoryId,
+                from = "2023-05-01",
+                to = "2023-06-01",
+                description = "Provided ushering staff.",
+            });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var experiences = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("experiences");
+        Assert.Equal(1, experiences.GetArrayLength());
+        Assert.Equal("opportunity", experiences[0].GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task ExperienceStore_UnknownCategory_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-EXPS-CAT", ExpValUser.Sub);
+        var client = _factory.CreateClientFor(ExpValUser);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/establishments/me/profile/experience?establishment_id={id}",
+            new
+            {
+                type = "event",
+                name = "Bad Category",
+                category = Guid.NewGuid(),
+                from = "2024-01-01",
+                to = "2024-03-01",
+                description = "Should fail category check.",
+            });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("category", out _));
+    }
+
+    [Fact]
+    public async Task ExperienceStore_BadTypeAndToBeforeFrom_Returns422()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-EXPS-VAL", ExpValUser.Sub);
+        var client = _factory.CreateClientFor(ExpValUser);
+
+        var badType = await client.PostAsJsonAsync(
+            $"/api/establishments/me/profile/experience?establishment_id={id}",
+            new { type = "festival", name = "X", category = ExpEventTypeId, from = "2024-01-01", to = "2024-02-01", description = "abc" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, badType.StatusCode);
+
+        var badDates = await client.PostAsJsonAsync(
+            $"/api/establishments/me/profile/experience?establishment_id={id}",
+            new { type = "event", name = "Valid Name", category = ExpEventTypeId, from = "2024-03-01", to = "2024-01-01", description = "abcdef" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, badDates.StatusCode);
+        using var doc = JsonDocument.Parse(await badDates.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("to", out _));
+    }
+
+    [Fact]
+    public async Task ExperienceStore_Precognition_StopsBeforeMutation_204()
+    {
+        var id = await BuildApprovedEstablishmentWithMember("CR-PROF-EXPS-PRE", ExpValUser.Sub);
+        var client = _factory.CreateClientFor(ExpValUser);
+
+        var req = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/establishments/me/profile/experience?establishment_id={id}")
+        {
+            Content = JsonContent.Create(new
+            {
+                type = "event",
+                name = "Precognition Run",
+                category = ExpEventTypeId,
+                from = "2024-01-01",
+                to = "2024-02-01",
+                description = "Should not persist.",
+            }),
+        };
+        req.Headers.Add("Precognition", "true");
+        var response = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var experiences = (await GetProfileAsync(client, id)).GetProperty("profile").GetProperty("experiences");
+        Assert.Equal(0, experiences.GetArrayLength());
     }
 
     // -- helpers --------------------------------------------------------------

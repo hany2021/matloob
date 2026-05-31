@@ -322,3 +322,18 @@ public sealed record EstablishmentBankAccountBlock(
 public sealed record EstablishmentBankRef(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("name")] string Name);
+
+/// <summary>
+/// One <c>experiences[]</c> entry — flat, mirroring the frontend
+/// <c>Experience</c> type (the polymorphic category is validated/stored on
+/// create but the read shape doesn't surface it).
+/// </summary>
+public sealed record EstablishmentExperienceBlock(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("type_label")] string TypeLabel,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("job_title")] string JobTitle,
+    [property: JsonPropertyName("from")] string From,
+    [property: JsonPropertyName("to")] string To,
+    [property: JsonPropertyName("description")] string Description);

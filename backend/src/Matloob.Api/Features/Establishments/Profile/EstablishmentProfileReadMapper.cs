@@ -48,7 +48,24 @@ public static class EstablishmentProfileReadMapper
         var logo = await MediaSupport.ListAsync(db, ModelType, e.Id.ToString(), LogoCollection, ct);
         var logoUrl = logo.Count > 0 ? logo[0].Url : null;
 
-        return BuildResponse(e, services, products, bankAccount, logoUrl);
+        var experienceRows = await db.EstablishmentExperiences
+            .AsNoTracking()
+            .Where(x => x.EstablishmentId == e.Id)
+            .OrderByDescending(x => x.From)
+            .ToListAsync(ct);
+        var experiences = experienceRows
+            .Select(x => (object)new EstablishmentExperienceBlock(
+                x.Id,
+                x.Type.ToWire(),
+                x.Type.Label(),
+                x.Name,
+                x.JobTitle,
+                x.From.ToString("yyyy-MM-dd"),
+                x.To.ToString("yyyy-MM-dd"),
+                x.Description))
+            .ToList();
+
+        return BuildResponse(e, services, products, bankAccount, logoUrl, experiences);
     }
 
     private static EstablishmentMeProfileResponse BuildResponse(
@@ -56,7 +73,8 @@ public static class EstablishmentProfileReadMapper
         IReadOnlyList<object> services,
         IReadOnlyList<object> products,
         EstablishmentBankAccountBlock? bankAccount,
-        string? logoUrl)
+        string? logoUrl,
+        IReadOnlyList<object> experiences)
     {
         var general = new EstablishmentGeneralInfoBlock
         {
@@ -100,11 +118,11 @@ public static class EstablishmentProfileReadMapper
             Services = services,
             Products = products,
             BankAccount = bankAccount,
+            Experiences = experiences,
             // Placeholders -- backing concept not migrated yet.
             Participations = [],
             Evaluations = [],
             Reviews = [],
-            Experiences = [],
         };
 
         return new EstablishmentMeProfileResponse

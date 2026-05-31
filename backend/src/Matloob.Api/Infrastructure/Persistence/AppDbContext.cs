@@ -61,6 +61,7 @@ public sealed class AppDbContext : DbContext
     // Establishment profile children: services + products offered.
     public DbSet<Service> Services => Set<Service>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<EstablishmentExperience> EstablishmentExperiences => Set<EstablishmentExperience>();
 
     // Establishment events + their opportunity-category pivot.
     public DbSet<Event> Events => Set<Event>();

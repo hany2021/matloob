@@ -33,7 +33,9 @@ public sealed class UpdateExperienceEndpoint
 
     public override void Configure()
     {
-        Verbs(Http.POST, Http.PATCH);
+        // PATCH only — the same route accepts POST for *storing* a portfolio
+        // experience (StoreExperienceEndpoint). PATCH carries years_of_experience.
+        Verbs(Http.PATCH);
         Routes(
             "/api/establishments/me/profile/experience",
             "/api/v1/establishments/me/profile/experience");
