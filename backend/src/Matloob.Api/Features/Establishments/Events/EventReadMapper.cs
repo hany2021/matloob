@@ -1,4 +1,6 @@
 using System.Globalization;
+using Matloob.Api.Features.Common;
+using Matloob.Api.Features.Establishments.Events.Common;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Events;
 using Matloob.Domain.Reference;
@@ -51,11 +53,17 @@ public static class EventReadMapper
                       .Select(c => c!)
                       .ToList());
 
+        var uploadsByEvent = await MediaSupport.ListForOwnersAsync(
+            db, EventWriteSupport.EventModelType,
+            eventIds.Select(id => id.ToString()).ToList(),
+            EventWriteSupport.UploadsCollection, ct);
+
         return events.Select(e => Map(
             e,
             types.GetValueOrDefault(e.EventTypeId),
             e.SeasonId.HasValue ? seasons.GetValueOrDefault(e.SeasonId.Value) : null,
-            catsByEvent.GetValueOrDefault(e.Id) ?? new List<OpportunityCategory>())).ToList();
+            catsByEvent.GetValueOrDefault(e.Id) ?? new List<OpportunityCategory>(),
+            uploadsByEvent.GetValueOrDefault(e.Id.ToString()) ?? new List<MediaDto>())).ToList();
     }
 
     public static async Task<EventResponse> BuildAsync(
@@ -63,7 +71,8 @@ public static class EventReadMapper
         => (await BuildManyAsync(db, new[] { @event }, ct))[0];
 
     private static EventResponse Map(
-        Event e, EventType? type, Season? season, IReadOnlyList<OpportunityCategory> cats) => new()
+        Event e, EventType? type, Season? season, IReadOnlyList<OpportunityCategory> cats,
+        IReadOnlyList<MediaDto> uploads) => new()
     {
         Id = e.Id,
         Name = e.Name,
@@ -92,6 +101,7 @@ public static class EventReadMapper
             Icon = type.Icon,
             Background = type.Background,
         },
+        Uploads = uploads,
         Season = season is null ? null : new EventSeasonDto { Id = season.Id, Name = season.Name },
         OpportunityCategories = cats.Select(c => new EventCategoryDto
         {

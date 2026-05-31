@@ -1,5 +1,9 @@
 using System.Globalization;
+using Matloob.Api.Features.Common;
+using Matloob.Api.Features.Profile.Common;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Infrastructure.Storage;
+using Matloob.Domain.Assets;
 using Matloob.Domain.Events;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -11,14 +15,25 @@ namespace Matloob.Api.Features.Establishments.Events.Common;
 /// payload (multipart with nested keys like <c>step_one[name]</c>,
 /// <c>step_two[start_date]</c>, <c>step_four[opportunities_categories][]</c>).
 /// Submitted progressively: each step's fields are validated only when that
-/// step is present (Laravel <c>required_with</c>). Step-three success criteria
-/// and uploads are accepted but not yet persisted (deferred — see
-/// docs/SESSION-RESUME.md).
+/// step is present (Laravel <c>required_with</c>). Step-two <c>uploads</c> are
+/// stored via the polymorphic <c>media</c> table; step-three success criteria
+/// remain deferred (see docs/SESSION-RESUME.md).
 /// </summary>
 internal static class EventWriteSupport
 {
+    /// <summary>Owner discriminator for the <c>media</c> table.</summary>
+    public const string EventModelType = "Event";
+    public const string UploadsCollection = "uploads";
+
+    /// <summary>Legacy cap for event uploads: 4 MB, jpg/png/pdf.</summary>
+    private const long MaxUploadBytes = 4 * 1024 * 1024;
+
     public static bool IsPrecognitive(HttpContext ctx)
         => ctx.Request.Headers.ContainsKey("Precognition");
+
+    /// <summary>New files posted under <c>step_two[uploads][]</c>.</summary>
+    public static IReadOnlyList<IFormFile> Uploads(IFormCollection form)
+        => form.Files.GetFiles("step_two[uploads][]");
 
     public static bool HasStep(IFormCollection form, string step)
         => form.Keys.Any(k => k.StartsWith($"{step}[", StringComparison.OrdinalIgnoreCase));
@@ -101,6 +116,14 @@ internal static class EventWriteSupport
                 errors.Add(("step_two.min_attendees", "Minimum attendees must be at least 1."));
             else if (!int.TryParse(Field(form, "step_two", "max_attendees"), out var max) || max <= min)
                 errors.Add(("step_two.max_attendees", "Maximum attendees must be greater than the minimum."));
+
+            foreach (var file in Uploads(form))
+            {
+                if (!ProfileAssetSupport.ImageOrPdfContentTypes.Contains(file.ContentType ?? string.Empty))
+                    errors.Add(("step_two.uploads", "Uploads must be PDF, JPEG or PNG."));
+                if (file.Length > MaxUploadBytes)
+                    errors.Add(("step_two.uploads", "Each upload must be 4 MB or smaller."));
+            }
         }
 
         if (HasStep(form, "step_four"))
@@ -134,8 +157,11 @@ internal static class EventWriteSupport
     // ---- apply ------------------------------------------------------------
 
     public static async Task ApplyStepsAsync(
-        AppDbContext db, Event @event, IFormCollection form, DateOnly today, CancellationToken ct)
+        AppDbContext db, IFileStorage storage, Event @event, IFormCollection form,
+        string? uploadedByUserId, DateTimeOffset now, CancellationToken ct)
     {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+
         if (HasStep(form, "step_one"))
         {
             var typeId = Guid.Parse(Field(form, "step_one", "type_uuid")!);
@@ -163,6 +189,22 @@ internal static class EventWriteSupport
                 lat, lon, min, max,
                 cityId: null);
             @event.SetStepsDone(2);
+
+            // Replace the event's uploads when new files are posted (the form
+            // re-sends files on change; absent files leave existing media alone).
+            var files = Uploads(form);
+            if (files.Count > 0)
+            {
+                await MediaSupport.ClearCollectionAsync(
+                    db, EventModelType, @event.Id.ToString(), UploadsCollection, ct);
+                var order = 0;
+                foreach (var file in files)
+                {
+                    await MediaSupport.AddUploadAsync(
+                        db, storage, EventModelType, @event.Id.ToString(), UploadsCollection,
+                        file, uploadedByUserId, order++, AssetVisibility.Public, now, ct);
+                }
+            }
         }
 
         if (HasStep(form, "step_three")) @event.SetStepsDone(3);

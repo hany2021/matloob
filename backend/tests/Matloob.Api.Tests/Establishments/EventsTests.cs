@@ -299,6 +299,54 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
     }
 
     [Fact]
+    public async Task UpdateEvent_WithUploads_StoresAndReturnsThem()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-UPLOAD");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "With Files");
+
+        var form = new MultipartFormDataContent();
+        foreach (var (k, v) in StepTwo("2099-04-01", "2099-04-05")) form.Add(new StringContent(v), k);
+        var png = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        png.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        form.Add(png, "step_two[uploads][]", "cover.png");
+
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}", form);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var uploads = doc.RootElement.DataOf().GetProperty("uploads");
+        Assert.Equal(1, uploads.GetArrayLength());
+        Assert.Equal("cover.png", uploads[0].GetProperty("name").GetString());
+        Assert.Contains("/api/v1/assets/", uploads[0].GetProperty("url").GetString());
+
+        // GET reflects the stored upload.
+        using var getDoc = JsonDocument.Parse(
+            await (await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}"))
+                .Content.ReadAsStringAsync());
+        Assert.Equal(1, getDoc.RootElement.DataOf().GetProperty("uploads").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task UpdateEvent_UploadWrongType_Returns422()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-UPLOAD-422");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "Bad File");
+
+        var form = new MultipartFormDataContent();
+        foreach (var (k, v) in StepTwo("2099-05-01", "2099-05-05")) form.Add(new StringContent(v), k);
+        var txt = new ByteArrayContent(new byte[] { 1, 2, 3 });
+        txt.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain");
+        form.Add(txt, "step_two[uploads][]", "notes.txt");
+
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task JoinedEvents_IncludesCreatedEvent()
     {
         var est = await BuildEstablishmentAsync("CR-EV-JOINED");

@@ -5,6 +5,7 @@ using Matloob.Api.Features.Establishments.Events.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Events;
 
 namespace Matloob.Api.Features.Establishments.Events;
@@ -19,12 +20,15 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
+    private readonly IFileStorage _storage;
 
-    public CreateEventEndpoint(AppDbContext db, ICurrentUser currentUser, TimeProvider clock)
+    public CreateEventEndpoint(
+        AppDbContext db, ICurrentUser currentUser, TimeProvider clock, IFileStorage storage)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _storage = storage;
     }
 
     public override void Configure()
@@ -33,7 +37,7 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
             "/api/establishments/events",
             "/api/v1/establishments/{establishmentId}/events");
         Policies(MatloobPolicies.User);
-        AllowFormData();
+        AllowFileUploads();
         Description(b => b
             .Produces<EventResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -80,8 +84,8 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
             seasonId);
         _db.Events.Add(@event);
 
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        await EventWriteSupport.ApplyStepsAsync(_db, @event, form, today, ct);
+        await EventWriteSupport.ApplyStepsAsync(
+            _db, _storage, @event, form, _currentUser.UserId, _clock.GetUtcNow(), ct);
         await _db.SaveChangesAsync(ct);
 
         var response = await EventReadMapper.BuildAsync(_db, @event, ct);

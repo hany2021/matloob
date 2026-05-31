@@ -4,6 +4,7 @@ using Matloob.Api.Tests.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Matloob.Api.Tests.Establishments;
@@ -33,6 +34,20 @@ public sealed class EstablishmentsApiFactory : MatloobApiFactory
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+
+        // Point file storage at a throwaway temp dir so any upload (e.g. event
+        // media) never writes into the developer checkout.
+        builder.ConfigureAppConfiguration((_, cfg) =>
+        {
+            cfg.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Storage:Driver"] = "Local",
+                ["Storage:AssetsRoot"] = System.IO.Path.Combine(
+                    System.IO.Path.GetTempPath(),
+                    "matloob-establishments-tests",
+                    Guid.NewGuid().ToString("N")),
+            });
+        });
 
         builder.ConfigureServices(services =>
         {
