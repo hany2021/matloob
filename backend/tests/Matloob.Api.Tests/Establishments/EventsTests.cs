@@ -1,0 +1,314 @@
+using System.Net;
+using System.Text.Json;
+using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Tests.Common;
+using Matloob.Domain.Reference;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Matloob.Api.Tests.Establishments;
+
+/// <summary>
+/// Integration tests for the establishment Events slice
+/// (Features/Establishments/Events). Each test builds its own Approved
+/// establishment (Creator → Owner) and passes <c>?establishment_id=</c>
+/// explicitly. Reference data (event type, category, suggested location/
+/// attendee) is seeded once. Responses ride the global { data } envelope.
+/// </summary>
+public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
+{
+    private readonly EstablishmentsApiFactory _factory;
+
+    private static readonly Guid EventTypeId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+    private static readonly Guid CategoryId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000002");
+    private static readonly Guid LocationId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000003");
+    private static readonly Guid AttendeeId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000004");
+
+    public EventsTests(EstablishmentsApiFactory factory)
+    {
+        _factory = factory;
+    }
+
+    private async Task SeedRefAsync()
+    {
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (await db.EventTypes.AnyAsync(t => t.Id == EventTypeId)) return;
+
+        db.EventTypes.Add(new EventType(EventTypeId, "Conference", "desc", "bg.png", "icon.png"));
+        db.OpportunityCategories.Add(new OpportunityCategory(CategoryId, "Ushering", forVacancy: true));
+        db.SuggestedLocations.Add(new SuggestedLocation(LocationId, "Riyadh Expo", 24.7m, 46.6m));
+        db.SuggestedAttendees.Add(new SuggestedAttendee(AttendeeId, 100, 500));
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<Guid> BuildEstablishmentAsync(string cr)
+    {
+        await SeedRefAsync();
+        var creator = _factory.CreateClientFor(Helpers.Creator);
+        var admin = _factory.CreateClientFor(Helpers.Admin);
+        var id = await Helpers.CreateReadyToSubmitDraftAsync(
+            _factory, creator, commercialRegistrationNumber: cr);
+        await creator.PostAsync($"/api/v1/establishments/registration/{id}/submit", content: null);
+        (await admin.PostAsync($"/api/v1/admin/establishments/{id}/approve", content: null))
+            .EnsureSuccessStatusCode();
+        return id;
+    }
+
+    private HttpClient Owner() => _factory.CreateClientFor(Helpers.Creator);
+
+    private static MultipartFormDataContent Form(params (string Key, string Value)[] fields)
+    {
+        var form = new MultipartFormDataContent();
+        foreach (var (key, value) in fields)
+            form.Add(new StringContent(value), key);
+        return form;
+    }
+
+    private static (string, string)[] StepOne(string name = "Gala Night") =>
+    [
+        ("step_one[type_uuid]", EventTypeId.ToString()),
+        ("step_one[name]", name),
+        ("step_one[description]", "An evening celebration event."),
+    ];
+
+    private static (string, string)[] StepTwo(string start, string end) =>
+    [
+        ("step_two[lat]", "24.7"),
+        ("step_two[lon]", "46.6"),
+        ("step_two[location_title]", "Riyadh"),
+        ("step_two[start_date]", start),
+        ("step_two[end_date]", end),
+        ("step_two[min_attendees]", "100"),
+        ("step_two[max_attendees]", "500"),
+    ];
+
+    private static async Task<Guid> CreateDraftAsync(HttpClient owner, Guid est, string name = "Gala Night")
+    {
+        var resp = await owner.PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Form(StepOne(name)));
+        resp.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        return doc.RootElement.DataOf().GetProperty("id").GetGuid();
+    }
+
+    // ===================== reads / auth =====================
+
+    [Fact]
+    public async Task Events_Anonymous_ReturnsUnauthorized()
+    {
+        var anon = _factory.CreateClientFor(null);
+        var resp = await anon.GetAsync("/api/establishments/events");
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task EventTypes_ReturnsSeeded()
+    {
+        await SeedRefAsync();
+        var resp = await Owner().GetAsync("/api/establishments/events/types");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
+            t => t.GetProperty("id").GetGuid() == EventTypeId);
+    }
+
+    [Fact]
+    public async Task SuggestedLocationsAndAttendees_ReturnSeeded()
+    {
+        await SeedRefAsync();
+        var owner = Owner();
+
+        using (var locDoc = JsonDocument.Parse(
+            await (await owner.GetAsync("/api/establishments/events/suggested-locations"))
+                .Content.ReadAsStringAsync()))
+        {
+            Assert.Contains(locDoc.RootElement.DataOf().EnumerateArray(),
+                l => l.GetProperty("id").GetGuid() == LocationId);
+        }
+
+        using var attDoc = JsonDocument.Parse(
+            await (await owner.GetAsync("/api/establishments/events/suggested-attendees"))
+                .Content.ReadAsStringAsync());
+        Assert.Contains(attDoc.RootElement.DataOf().EnumerateArray(),
+            a => a.GetProperty("min").GetInt32() == 100 && a.GetProperty("max").GetInt32() == 500);
+    }
+
+    // ===================== create / update =====================
+
+    [Fact]
+    public async Task CreateEvent_StepOne_Returns201_Draft()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-CREATE");
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Form(StepOne("My Conference")));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("My Conference", data.GetProperty("name").GetString());
+        Assert.Equal("drafted", data.GetProperty("status").GetString());
+        Assert.Equal(EventTypeId, data.GetProperty("type").GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task CreateEvent_MissingType_Returns422()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-422");
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}",
+            Form(("step_one[name]", "No Type"), ("step_one[description]", "desc here")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StepTwo_AppliesSchedule()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-STEP2");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}",
+            Form(StepTwo("2026-12-01", "2026-12-05")));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("2026-12-01", data.GetProperty("start_date").GetString());
+        Assert.Equal(100, data.GetProperty("min_attendees").GetInt32());
+        Assert.True(data.GetProperty("steps_done").GetInt32() >= 2);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StepFour_SetsCategories()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-STEP4");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}",
+            Form(("step_four[opportunities_categories][]", CategoryId.ToString())));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var cats = doc.RootElement.DataOf().GetProperty("opportunity_categories");
+        Assert.Equal(1, cats.GetArrayLength());
+        Assert.Equal(CategoryId, cats[0].GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task CreateEvent_WithPublish_FutureStart_IsUpcoming()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-PUB");
+        var fields = new List<(string, string)>();
+        fields.AddRange(StepOne("Future Fest"));
+        fields.AddRange(StepTwo("2099-01-01", "2099-01-05"));
+        fields.Add(("step_five[publish]", "1"));
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Form(fields.ToArray()));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.Equal("upcoming", doc.RootElement.DataOf().GetProperty("status").GetString());
+    }
+
+    // ===================== grouped list / get =====================
+
+    [Fact]
+    public async Task ListEvents_GroupsByStatus()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-LIST");
+        var owner = Owner();
+        await CreateDraftAsync(owner, est, "Draft One");
+
+        var pubFields = new List<(string, string)>();
+        pubFields.AddRange(StepOne("Upcoming One"));
+        pubFields.AddRange(StepTwo("2099-02-01", "2099-02-05"));
+        pubFields.Add(("step_five[publish]", "1"));
+        await owner.PostAsync($"/api/establishments/events?establishment_id={est}", Form(pubFields.ToArray()));
+
+        var resp = await owner.GetAsync($"/api/establishments/events?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(1, data.GetProperty("drafted").GetArrayLength());
+        Assert.Equal(1, data.GetProperty("upcoming").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetEvent_ReturnsOne_AndUnknownIs404()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-GET");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "Findable");
+
+        var get = await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        using (var gdoc = JsonDocument.Parse(await get.Content.ReadAsStringAsync()))
+            Assert.Equal("Findable", gdoc.RootElement.DataOf().GetProperty("name").GetString());
+
+        var unknown = await owner.GetAsync(
+            $"/api/establishments/events/{Guid.NewGuid()}?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    // ===================== end / delete / joined =====================
+
+    [Fact]
+    public async Task EndEvent_FlipsToEnded_AndDraftCannotEnd()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-END");
+        var owner = Owner();
+
+        // A published (upcoming) event can be ended.
+        var pubFields = new List<(string, string)>();
+        pubFields.AddRange(StepOne("Endable"));
+        pubFields.AddRange(StepTwo("2099-03-01", "2099-03-05"));
+        pubFields.Add(("step_five[publish]", "1"));
+        var created = await owner.PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Form(pubFields.ToArray()));
+        Guid pubId;
+        using (var cdoc = JsonDocument.Parse(await created.Content.ReadAsStringAsync()))
+            pubId = cdoc.RootElement.DataOf().GetProperty("id").GetGuid();
+
+        var end = await owner.PatchAsync(
+            $"/api/establishments/events/{pubId}/end?establishment_id={est}", content: null);
+        Assert.Equal(HttpStatusCode.OK, end.StatusCode);
+        using (var edoc = JsonDocument.Parse(await end.Content.ReadAsStringAsync()))
+            Assert.Equal("ended", edoc.RootElement.DataOf().GetProperty("status").GetString());
+
+        // A draft cannot be ended.
+        var draftId = await CreateDraftAsync(owner, est, "Still Draft");
+        var endDraft = await owner.PatchAsync(
+            $"/api/establishments/events/{draftId}/end?establishment_id={est}", content: null);
+        Assert.Equal(HttpStatusCode.BadRequest, endDraft.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteEvent_RemovesIt()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-DEL");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "Temp Event");
+
+        var del = await owner.DeleteAsync($"/api/establishments/events/{id}?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
+
+        var get = await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
+    }
+
+    [Fact]
+    public async Task JoinedEvents_IncludesCreatedEvent()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JOINED");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est, "Mine Created");
+
+        var resp = await owner.GetAsync($"/api/establishments/events/joined-events?establishment_id={est}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
+            e => e.GetProperty("id").GetGuid() == id);
+    }
+}
