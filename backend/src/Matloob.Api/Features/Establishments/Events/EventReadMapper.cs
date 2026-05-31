@@ -58,12 +58,15 @@ public static class EventReadMapper
             eventIds.Select(id => id.ToString()).ToList(),
             EventWriteSupport.UploadsCollection, ct);
 
+        var criteriaByEvent = await SuccessCriteriaSupport.ProjectForEventsAsync(db, eventIds, ct);
+
         return events.Select(e => Map(
             e,
             types.GetValueOrDefault(e.EventTypeId),
             e.SeasonId.HasValue ? seasons.GetValueOrDefault(e.SeasonId.Value) : null,
             catsByEvent.GetValueOrDefault(e.Id) ?? new List<OpportunityCategory>(),
-            uploadsByEvent.GetValueOrDefault(e.Id.ToString()) ?? new List<MediaDto>())).ToList();
+            uploadsByEvent.GetValueOrDefault(e.Id.ToString()) ?? new List<MediaDto>(),
+            criteriaByEvent.GetValueOrDefault(e.Id) ?? new List<CriterionDto>())).ToList();
     }
 
     public static async Task<EventResponse> BuildAsync(
@@ -72,7 +75,7 @@ public static class EventReadMapper
 
     private static EventResponse Map(
         Event e, EventType? type, Season? season, IReadOnlyList<OpportunityCategory> cats,
-        IReadOnlyList<MediaDto> uploads) => new()
+        IReadOnlyList<MediaDto> uploads, IReadOnlyList<CriterionDto> successCriteria) => new()
     {
         Id = e.Id,
         Name = e.Name,
@@ -102,6 +105,7 @@ public static class EventReadMapper
             Background = type.Background,
         },
         Uploads = uploads,
+        SuccessCriteria = (IReadOnlyList<object>)successCriteria,
         Season = season is null ? null : new EventSeasonDto { Id = season.Id, Name = season.Name },
         OpportunityCategories = cats.Select(c => new EventCategoryDto
         {

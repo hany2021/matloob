@@ -126,6 +126,14 @@ internal static class EventWriteSupport
             }
         }
 
+        if (HasStep(form, "step_three"))
+        {
+            var criteria = SuccessCriteriaSupport.Parse(form, "step_three[success_criteria]");
+            if (criteria.Count == 0)
+                errors.Add(("step_three.success_criteria", "At least one success criterion is required."));
+            SuccessCriteriaSupport.Validate(criteria, "step_three.success_criteria", errors);
+        }
+
         if (HasStep(form, "step_four"))
         {
             var cats = Categories(form);
@@ -207,7 +215,13 @@ internal static class EventWriteSupport
             }
         }
 
-        if (HasStep(form, "step_three")) @event.SetStepsDone(3);
+        if (HasStep(form, "step_three"))
+        {
+            var criteria = SuccessCriteriaSupport.Parse(form, "step_three[success_criteria]");
+            await SuccessCriteriaSupport.ReplaceForEventAsync(
+                db, storage, @event.Id, criteria, uploadedByUserId, now, ct);
+            @event.SetStepsDone(3);
+        }
 
         if (HasStep(form, "step_four"))
         {

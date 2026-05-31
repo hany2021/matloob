@@ -93,7 +93,9 @@ public sealed class GetDraftedEventEndpoint : EndpointWithoutRequest<DraftedEven
                 e.MinAttendees, e.MaxAttendees, e.LocationTitle, uploads);
         }
 
-        DraftedStepThree? stepThree = n >= 3 ? new DraftedStepThree([]) : null;
+        DraftedStepThree? stepThree = n >= 3
+            ? new DraftedStepThree(await SuccessCriteriaSupport.ProjectForEventAsync(_db, e.Id, ct))
+            : null;
 
         DraftedStepFour? stepFour = null;
         if (n >= 4)

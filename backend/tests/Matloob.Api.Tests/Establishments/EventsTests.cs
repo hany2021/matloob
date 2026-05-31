@@ -469,4 +469,112 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         var anonResp = await anon.GetAsync($"/api/establishments/events/{Guid.NewGuid()}/drafted");
         Assert.Equal(HttpStatusCode.Unauthorized, anonResp.StatusCode);
     }
+
+    // ===================== step-three success criteria =====================
+
+    private const string CritOutput = "Event ran smoothly";
+    private const string CritSuccess = "All planned activities were completed on schedule and on budget.";
+    private const string CritComment = "Measured against the agreed event success checklist and KPIs.";
+
+    private static void AddCriterion(
+        MultipartFormDataContent form, int idx, string output, string success, string? comment)
+    {
+        form.Add(new StringContent(output), $"step_three[success_criteria][{idx}][output]");
+        form.Add(new StringContent(success), $"step_three[success_criteria][{idx}][success_criteria]");
+        if (comment is not null)
+            form.Add(new StringContent(comment), $"step_three[success_criteria][{idx}][comment]");
+    }
+
+    [Fact]
+    public async Task Event_StepThree_CreatesCriteria_AndReadsReflect()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-SC1");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddCriterion(form, 0, CritOutput, CritSuccess, CritComment);
+        var patch = await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form);
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+
+        // GET event reflects success_criteria.
+        using (var gdoc = JsonDocument.Parse(
+            await (await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}"))
+                .Content.ReadAsStringAsync()))
+        {
+            var sc = gdoc.RootElement.DataOf().GetProperty("success_criteria");
+            Assert.Equal(1, sc.GetArrayLength());
+            Assert.Equal(CritOutput, sc[0].GetProperty("output").GetString());
+            Assert.Equal(CritComment, sc[0].GetProperty("comment").GetString());
+            Assert.Equal(0, sc[0].GetProperty("uploads").GetArrayLength());
+        }
+
+        // drafted read reflects step_three.success_criteria.
+        var drafted = await GetDraftedAsync(owner, est, id);
+        Assert.Equal(1, drafted.GetProperty("step_three").GetProperty("success_criteria").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Event_StepThree_WithUpload_ProjectsCriterionUpload()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-SC-UP");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddCriterion(form, 0, CritOutput, CritSuccess, null);
+        var png = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        png.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        form.Add(png, "step_three[success_criteria][0][uploads][0]", "proof.png");
+
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form))
+            .EnsureSuccessStatusCode();
+
+        using var gdoc = JsonDocument.Parse(
+            await (await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}"))
+                .Content.ReadAsStringAsync());
+        var uploads = gdoc.RootElement.DataOf().GetProperty("success_criteria")[0].GetProperty("uploads");
+        Assert.Equal(1, uploads.GetArrayLength());
+        Assert.Equal("proof.png", uploads[0].GetProperty("name").GetString());
+        Assert.Contains("/api/v1/assets/", uploads[0].GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task Event_StepThree_ShortOutput_Returns422()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-SC-422");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form = new MultipartFormDataContent();
+        AddCriterion(form, 0, "short", CritSuccess, null); // output < 10 chars
+        var patch = await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, patch.StatusCode);
+    }
+
+    [Fact]
+    public async Task Event_StepThree_Replaces_Previous()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-SC-REP");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var form1 = new MultipartFormDataContent();
+        AddCriterion(form1, 0, CritOutput, CritSuccess, null);
+        AddCriterion(form1, 1, "Second outcome ok", CritSuccess, null);
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form1))
+            .EnsureSuccessStatusCode();
+
+        var form2 = new MultipartFormDataContent();
+        AddCriterion(form2, 0, "Only one remains", CritSuccess, null);
+        (await owner.PatchAsync($"/api/establishments/events/{id}?establishment_id={est}", form2))
+            .EnsureSuccessStatusCode();
+
+        using var gdoc = JsonDocument.Parse(
+            await (await owner.GetAsync($"/api/establishments/events/{id}?establishment_id={est}"))
+                .Content.ReadAsStringAsync());
+        var sc = gdoc.RootElement.DataOf().GetProperty("success_criteria");
+        Assert.Equal(1, sc.GetArrayLength());
+        Assert.Equal("Only one remains", sc[0].GetProperty("output").GetString());
+    }
 }
