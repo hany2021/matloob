@@ -72,6 +72,11 @@ try
     // dispatcher background service runs only when Outbox:DispatcherEnabled.
     builder.Services.AddMatloobOutbox(builder.Configuration);
 
+    // Outbound SMS port. No real provider yet (Q-NOTIF-TRANSPORT) — the
+    // no-op keeps the notification fanout's sms channel wired.
+    builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.ISmsSender,
+        Matloob.Api.Infrastructure.Notifications.NoOpSmsSender>();
+
     // Feature-slice handlers that orchestrate across multiple endpoints get
     // registered here. Inline handlers (most slices) need no entry.
     builder.Services

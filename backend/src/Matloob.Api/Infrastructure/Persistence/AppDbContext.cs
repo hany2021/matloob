@@ -6,6 +6,7 @@ using Matloob.Domain.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Evaluations;
 using Matloob.Domain.Events;
+using Matloob.Domain.Notifications;
 using Matloob.Domain.Offers;
 using Matloob.Domain.Opportunities;
 using Matloob.Domain.Reference;
@@ -70,6 +71,9 @@ public sealed class AppDbContext : DbContext
     // change that triggered the event; drained by the dispatcher background
     // service.
     public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
+
+    // Delivered in-app notifications (populated by the outbox fanout subscriber).
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     // Local cache of IdM users. Created/updated by ICurrentUserSyncService
     // on authenticated requests.
