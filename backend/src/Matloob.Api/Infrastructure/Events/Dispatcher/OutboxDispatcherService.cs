@@ -35,17 +35,20 @@ public sealed class OutboxDispatcherService
     private readonly OutboxOptions _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<OutboxDispatcherService> _logger;
+    private readonly IEnumerable<IOutboxHandler> _handlers;
 
     public OutboxDispatcherService(
         AppDbContext db,
         IOptions<OutboxOptions> options,
         TimeProvider clock,
-        ILogger<OutboxDispatcherService> logger)
+        ILogger<OutboxDispatcherService> logger,
+        IEnumerable<IOutboxHandler> handlers)
     {
         _db = db;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
+        _handlers = handlers;
     }
 
     /// <summary>
@@ -78,11 +81,12 @@ public sealed class OutboxDispatcherService
 
             try
             {
-                // No real subscribers yet -- the dispatcher's job today is
-                // to drain the table. When a future commit adds in-process
-                // handlers, dispatch them here (e.g. via a registered
-                // collection of IOutboxHandler<TPayload>).
-                DispatchHandlerNoOp(row);
+                // Fan the row out to every registered in-process handler
+                // (notifications, …). Handlers stage entities on the shared
+                // AppDbContext; the SaveChanges below commits them together
+                // with this row's processed stamp.
+                foreach (var handler in _handlers)
+                    await handler.HandleAsync(row, ct);
 
                 row.MarkProcessed(_clock.GetUtcNow());
                 processed++;
@@ -107,13 +111,6 @@ public sealed class OutboxDispatcherService
 
         return new DispatchSummary(rows.Count, processed, failed);
     }
-
-    /// <summary>
-    /// Placeholder for the in-process handler dispatch. No-op today --
-    /// outbox rows are simply marked processed. When real subscribers
-    /// land (notifications, audit feed, etc.), they hook in here.
-    /// </summary>
-    private static void DispatchHandlerNoOp(OutboxEvent _) { }
 }
 
 /// <summary>Counters for one dispatch pass.</summary>

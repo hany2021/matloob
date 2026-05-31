@@ -77,6 +77,10 @@ try
     builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.ISmsSender,
         Matloob.Api.Infrastructure.Notifications.NoOpSmsSender>();
 
+    // Outbox subscriber that turns offer events into notifications.
+    builder.Services.AddScoped<Matloob.Api.Infrastructure.Events.Dispatcher.IOutboxHandler,
+        Matloob.Api.Features.Notifications.Fanout.NotificationOutboxHandler>();
+
     // Feature-slice handlers that orchestrate across multiple endpoints get
     // registered here. Inline handlers (most slices) need no entry.
     builder.Services
