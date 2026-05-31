@@ -3,6 +3,7 @@ using System.Text.Json;
 using Matloob.Api.Infrastructure.Events.Dispatcher;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Api.Tests.Establishments;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Events;
@@ -143,7 +144,7 @@ public sealed class OutboxLifecycleTests
             $"/api/v1/establishments/{id}/members",
             new { userId = "outbox-hr-1", role = "HR" });
         var memberId = (await addResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
         await owner.DeleteAsync($"/api/v1/establishments/{id}/members/{memberId}");
 
         var events = await ReadOutboxForAsync(id);
@@ -162,7 +163,7 @@ public sealed class OutboxLifecycleTests
         var crResp = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var crId = (await crResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
         await owner.PatchAsJsonAsync(
             $"/api/v1/establishments/{id}/change-requests/{crId}/basic-info",
             new { name = "Acme Renamed" });
@@ -175,7 +176,7 @@ public sealed class OutboxLifecycleTests
         var cr2Resp = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var cr2Id = (await cr2Resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
         await owner.PatchAsJsonAsync(
             $"/api/v1/establishments/{id}/change-requests/{cr2Id}/basic-info",
             new { name = "Tweak again" });
@@ -189,7 +190,7 @@ public sealed class OutboxLifecycleTests
         var cr3Resp = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var cr3Id = (await cr3Resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
         await owner.DeleteAsync($"/api/v1/establishments/{id}/change-requests/{cr3Id}");
 
         var events = await ReadOutboxForAsync(id);

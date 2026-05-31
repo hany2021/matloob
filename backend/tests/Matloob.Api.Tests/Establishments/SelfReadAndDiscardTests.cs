@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,7 +55,7 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
     {
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("items").EnumerateArray()
+        return doc.RootElement.DataOf().GetProperty("items").EnumerateArray()
             .Select(e => e.GetProperty("id").GetGuid())
             .ToList();
     }
@@ -129,7 +130,7 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var mine = doc.RootElement.GetProperty("items").EnumerateArray()
+        var mine = doc.RootElement.DataOf().GetProperty("items").EnumerateArray()
             .Single(e => e.GetProperty("id").GetGuid() == id);
         Assert.Equal("Owner", mine.GetProperty("myRole").GetString());
         Assert.True(mine.GetProperty("canManageMembers").GetBoolean());
@@ -153,8 +154,9 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(id, doc.RootElement.GetProperty("id").GetGuid());
-        Assert.Equal("Draft", doc.RootElement.GetProperty("status").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(id, data.GetProperty("id").GetGuid());
+        Assert.Equal("Draft", data.GetProperty("status").GetString());
     }
 
     [Fact]
@@ -173,14 +175,15 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var docs = doc.RootElement.GetProperty("documents").EnumerateArray()
+        var data = doc.RootElement.DataOf();
+        var docs = data.GetProperty("documents").EnumerateArray()
             .Select(d => d.GetProperty("documentType").GetString())
             .ToList();
         Assert.Contains("AuthorizationLetter", docs);
         Assert.Contains("CommercialRegistration", docs);
 
         // HR is a member, so the members list should be present and include them.
-        var memberIds = doc.RootElement.GetProperty("members").EnumerateArray()
+        var memberIds = data.GetProperty("members").EnumerateArray()
             .Select(m => m.GetProperty("userId").GetString())
             .ToList();
         Assert.Contains(HR.Sub, memberIds);
@@ -224,7 +227,7 @@ public sealed class SelfReadAndDiscardTests : IClassFixture<EstablishmentsApiFac
 
         await using var stream = await detail.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var pending = doc.RootElement.GetProperty("pendingChangeRequest");
+        var pending = doc.RootElement.DataOf().GetProperty("pendingChangeRequest");
         Assert.NotEqual(JsonValueKind.Null, pending.ValueKind);
         Assert.Equal(crId, pending.GetProperty("id").GetGuid());
     }

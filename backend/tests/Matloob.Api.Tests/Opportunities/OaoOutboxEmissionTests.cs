@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Applications;
 using Matloob.Domain.Evaluations;
 using Matloob.Domain.Offers;
@@ -77,8 +79,8 @@ public sealed class OaoOutboxEmissionTests
                 required_personnel = 5,
             });
         createResp.EnsureSuccessStatusCode();
-        var oppId = (await createResp.Content.ReadFromJsonAsync<Dictionary<string, object>>())!["id"];
-        var oppGuid = Guid.Parse(oppId!.ToString()!);
+        using var createDoc = JsonDocument.Parse(await createResp.Content.ReadAsStringAsync());
+        var oppGuid = createDoc.RootElement.DataOf().GetProperty("id").GetGuid();
 
         Assert.Equal(1, await OaoHelpers.CountOutboxEventsAsync(
             _factory, OpportunityEventTypes.Created, oppGuid));
@@ -157,8 +159,8 @@ public sealed class OaoOutboxEmissionTests
             $"/api/v1/establishments/{_establishmentId}/offers/send",
             new { applicant_id = appId, monthly_salary = 5000m });
         sendResp.EnsureSuccessStatusCode();
-        var offerId = (await sendResp.Content.ReadFromJsonAsync<Dictionary<string, object>>())!["id"];
-        var offerGuid = Guid.Parse(offerId!.ToString()!);
+        using var sendDoc = JsonDocument.Parse(await sendResp.Content.ReadAsStringAsync());
+        var offerGuid = sendDoc.RootElement.DataOf().GetProperty("id").GetGuid();
 
         await worker.PostAsync($"/api/v1/users/offers/{offerGuid}/accept", content: null);
         Assert.Equal(1, await OaoHelpers.CountOutboxEventsAsync(

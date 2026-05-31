@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
@@ -83,11 +84,12 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Pending", doc.RootElement.GetProperty("status").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("Pending", data.GetProperty("status").GetString());
         // No Ajeer/contract/invoice fields.
-        Assert.False(doc.RootElement.TryGetProperty("contract", out _));
-        Assert.False(doc.RootElement.TryGetProperty("contract_type", out _));
-        Assert.False(doc.RootElement.TryGetProperty("contract_path", out _));
+        Assert.False(data.TryGetProperty("contract", out _));
+        Assert.False(data.TryGetProperty("contract_type", out _));
+        Assert.False(data.TryGetProperty("contract_path", out _));
 
         var outboxCount = await OaoHelpers.CountOutboxEventsAsync(
             _factory, OfferEventTypes.Created);
@@ -110,8 +112,9 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("PendingSponsorApproval", doc.RootElement.GetProperty("status").GetString());
-        Assert.True(doc.RootElement.GetProperty("is_pending_sponsor_approval").GetBoolean());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("PendingSponsorApproval", data.GetProperty("status").GetString());
+        Assert.True(data.GetProperty("is_pending_sponsor_approval").GetBoolean());
     }
 
     [Fact]
@@ -168,7 +171,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Contains(doc.RootElement.EnumerateArray(),
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == offerId);
     }
 
@@ -195,8 +198,9 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Accepted", doc.RootElement.GetProperty("status").GetString());
-        Assert.Equal(JsonValueKind.String, doc.RootElement.GetProperty("accepted_at").ValueKind);
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("Accepted", data.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.String, data.GetProperty("accepted_at").ValueKind);
     }
 
     [Fact]
@@ -229,7 +233,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Rejected", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- cancellation -------------------------------------------------------
@@ -258,7 +262,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await approveResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Canceled", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Canceled", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -281,7 +285,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await rejectResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Accepted", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Accepted", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- sponsor flow -------------------------------------------------------
@@ -301,7 +305,7 @@ public sealed class OfferLifecycleTests
         Assert.Equal(HttpStatusCode.Created, sendResp.StatusCode);
         await using var sendStream = await sendResp.Content.ReadAsStreamAsync();
         var sendDoc = await JsonDocument.ParseAsync(sendStream);
-        var offerId = sendDoc.RootElement.GetProperty("id").GetGuid();
+        var offerId = sendDoc.RootElement.DataOf().GetProperty("id").GetGuid();
 
         var response = await _factory.CreateClientFor(SponsorOwner)
             .PostAsync(
@@ -311,7 +315,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Pending", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Pending", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -329,7 +333,7 @@ public sealed class OfferLifecycleTests
         Assert.Equal(HttpStatusCode.Created, sendResp.StatusCode);
         await using var sendStream = await sendResp.Content.ReadAsStreamAsync();
         var sendDoc = await JsonDocument.ParseAsync(sendStream);
-        var offerId = sendDoc.RootElement.GetProperty("id").GetGuid();
+        var offerId = sendDoc.RootElement.DataOf().GetProperty("id").GetGuid();
 
         var reasonId = await GetAnyRejectionReasonAsync();
         var response = await _factory.CreateClientFor(SponsorOwner)
@@ -340,7 +344,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("SponsorRejected", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("SponsorRejected", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- helpers ------------------------------------------------------------
@@ -354,7 +358,7 @@ public sealed class OfferLifecycleTests
         Assert.Equal(HttpStatusCode.Created, sendResp.StatusCode);
         await using var stream = await sendResp.Content.ReadAsStreamAsync();
         var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        return doc.RootElement.DataOf().GetProperty("id").GetGuid();
     }
 
     private async Task<Guid> GetAnyRejectionReasonAsync()

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
 
 namespace Matloob.Api.Tests.Opportunities;
@@ -76,7 +77,7 @@ public sealed class MineOpportunityTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var names = doc.RootElement.EnumerateArray()
+        var names = doc.RootElement.DataOf().EnumerateArray()
             .Select(e => e.GetProperty("name").GetString()!).ToList();
 
         Assert.Contains("Own draft", names);
@@ -112,7 +113,7 @@ public sealed class MineOpportunityTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var names = doc.RootElement.EnumerateArray()
+        var names = doc.RootElement.DataOf().EnumerateArray()
             .Select(e => e.GetProperty("name").GetString()!).ToList();
         Assert.Contains("F-ended", names);
         Assert.DoesNotContain("F-upcoming", names);
@@ -156,6 +157,6 @@ public sealed class MineOpportunityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Drafted", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Drafted", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 }

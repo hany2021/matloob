@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests;
 
@@ -40,7 +41,7 @@ public sealed class MeEndpointTests : IClassFixture<MatloobApiFactory>
 
         using var stream = await response.Content.ReadAsStreamAsync();
         using var document = await JsonDocument.ParseAsync(stream);
-        var root = document.RootElement;
+        var root = document.RootElement.DataOf();
 
         Assert.True(root.GetProperty("isAuthenticated").GetBoolean());
         Assert.Equal("test-subject-123", root.GetProperty("userId").GetString());

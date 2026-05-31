@@ -55,6 +55,17 @@ public static class AuthRegistration
                 jwt.Audience = identity.Audience;
                 jwt.RequireHttpsMetadata = identity.RequireHttpsMetadata;
 
+                // Pass JWT claims through verbatim. By default JwtBearer maps
+                // short claim names to legacy WIF URIs (e.g. "role" =>
+                // "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                // BEFORE authorization runs. That rename strips the "role"
+                // claim our RoleClaimType ("role") looks for, so RequireRole
+                // sees nothing and every [Authorize(Roles=...)] / policy with
+                // RequireRole returns 403 even though the token carries the
+                // role. Disabling the map keeps "role" as "role" (and "sub"
+                // as "sub"), which is what NameClaimType/RoleClaimType expect.
+                jwt.MapInboundClaims = false;
+
                 jwt.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = !string.IsNullOrEmpty(identity.Issuer),

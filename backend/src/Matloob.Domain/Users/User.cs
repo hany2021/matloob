@@ -46,6 +46,44 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
     /// </summary>
     public DateTimeOffset? LastSeenAt { get; private set; }
 
+    /// <summary>
+    /// True once the user has finished the public-frontend onboarding wizard.
+    /// Mirrors the old Laravel <c>users.onboarded</c> flag. Set by
+    /// <c>PATCH /api/users/profile/finish-onboarding</c>. The flag is
+    /// surfaced on <c>GET /api/users/profile</c> so the frontend's
+    /// onboarding guard can read it back.
+    /// </summary>
+    public bool Onboarded { get; private set; }
+
+    // ---- Personal-info profile fields (migrated from Laravel users table) ----
+
+    /// <summary>National ID / Iqama number. Read-only from the profile UI today
+    /// (sourced from IdM); kept here for response parity.</summary>
+    public string? IdNumber { get; private set; }
+
+    public Gender? Gender { get; private set; }
+    public int? Age { get; private set; }
+    public DateOnly? DateOfBirth { get; private set; }
+    public string? Bio { get; private set; }
+
+    /// <summary>Secondary contact number (legacy <c>additional_phone_number</c>).</summary>
+    public string? AdditionalPhone { get; private set; }
+
+    /// <summary>Total years of experience. Legacy column defaulted to 0.</summary>
+    public int YearsOfExperience { get; private set; }
+
+    /// <summary>True once all four profile sections are filled. Recomputed by
+    /// the application layer after each profile mutation.</summary>
+    public bool ProfileCompleted { get; private set; }
+
+    // Reference FKs (nullable until the user fills personal-info).
+    public Guid? CityId { get; private set; }
+    public Guid? RegionId { get; private set; }
+    public Guid? NationalityId { get; private set; }
+
+    /// <summary>Profile photo via the Asset GUID flow (replaces Spatie media).</summary>
+    public Guid? PhotoAssetId { get; private set; }
+
     private User() { }
 
     /// <summary>
@@ -103,6 +141,59 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
 
     public void Deactivate() => IsActive = false;
     public void Reactivate() => IsActive = true;
+
+    /// <summary>
+    /// Mark the user as having completed the public-frontend onboarding
+    /// wizard. Idempotent — calling it on an already-onboarded user is a
+    /// no-op so the frontend can safely re-fire the PATCH on retry.
+    /// </summary>
+    public void MarkOnboarded() => Onboarded = true;
+
+    /// <summary>
+    /// Apply the personal-info form (PATCH /api/users/profile/personal-info).
+    /// All fields are required by the legacy validator, so this is a full set
+    /// rather than a partial patch. Reference ids are resolved to existing
+    /// rows by the endpoint before calling this.
+    /// </summary>
+    public void UpdatePersonalInfo(
+        string name,
+        string email,
+        string phone,
+        string? additionalPhone,
+        string? bio,
+        Guid? cityId,
+        Guid? regionId)
+    {
+        Name = Normalize(name);
+        Email = Normalize(email);
+        Phone = Normalize(phone);
+        AdditionalPhone = Normalize(additionalPhone);
+        Bio = bio?.Trim();
+        CityId = cityId;
+        RegionId = regionId;
+    }
+
+    public void SetPhoto(Guid? assetId) => PhotoAssetId = assetId;
+
+    public void SetYearsOfExperience(int years) => YearsOfExperience = years;
+
+    public void SetProfileCompleted(bool completed) => ProfileCompleted = completed;
+
+    /// <summary>Personal/identity attributes that today flow from IdM claims.
+    /// Exposed so the sync layer can backfill them without a profile edit.</summary>
+    public void SetIdentityAttributes(
+        string? idNumber,
+        Gender? gender,
+        int? age,
+        DateOnly? dateOfBirth,
+        Guid? nationalityId)
+    {
+        if (idNumber is not null) IdNumber = idNumber.Trim();
+        if (gender is not null) Gender = gender;
+        if (age is not null) Age = age;
+        if (dateOfBirth is not null) DateOfBirth = dateOfBirth;
+        if (nationalityId is not null) NationalityId = nationalityId;
+    }
 
     private static string? Normalize(string? value)
     {

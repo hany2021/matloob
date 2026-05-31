@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -271,7 +272,7 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         await SuspendAsync(id, "freeze");
 
@@ -293,7 +294,7 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         await SuspendAsync(id, "freeze");
 
@@ -326,7 +327,7 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
         var crResponse = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var crId = (await crResponse.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         await SuspendAsync(id, "freeze mid-edit");
 
@@ -355,7 +356,7 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
         var crResponse = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var crId = (await crResponse.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         // Seed an AuthorizationLetter asset before suspending.
         var newAssetId = Guid.NewGuid();
@@ -390,7 +391,7 @@ public sealed class SuspensionLifecycleTests : IClassFixture<EstablishmentsApiFa
         var crResponse = await owner.PostAsync(
             $"/api/v1/establishments/{id}/change-requests", content: null);
         var crId = (await crResponse.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         var newAssetId = Guid.NewGuid();
         using (var scope = _factory.CreateDbScope())

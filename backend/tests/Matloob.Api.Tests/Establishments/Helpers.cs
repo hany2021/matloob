@@ -142,6 +142,13 @@ internal static class Helpers
     {
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        var root = doc.RootElement;
+        // Responses are wrapped in the global { data } envelope; unwrap if present.
+        if (root.ValueKind == System.Text.Json.JsonValueKind.Object
+            && root.TryGetProperty("data", out var data))
+        {
+            root = data;
+        }
+        return root.GetProperty("id").GetGuid();
     }
 }

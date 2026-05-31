@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +43,7 @@ public sealed class ChangeRequestLifecycleTests : IClassFixture<EstablishmentsAp
     {
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        return doc.RootElement.DataOf().GetProperty("id").GetGuid();
     }
 
     // -- create --------------------------------------------------------------
@@ -163,7 +164,7 @@ public sealed class ChangeRequestLifecycleTests : IClassFixture<EstablishmentsAp
     }
 
     [Fact]
-    public async Task UpdateProposedBasicInfo_InvalidEmail_ReturnsBadRequest()
+    public async Task UpdateProposedBasicInfo_InvalidEmail_ReturnsUnprocessableEntity()
     {
         var id = await CreateApprovedEstablishmentAsync("CR-CR-PATCH-3");
         var owner = _factory.CreateClientFor(Helpers.Creator);
@@ -176,7 +177,8 @@ public sealed class ChangeRequestLifecycleTests : IClassFixture<EstablishmentsAp
             $"/api/v1/establishments/{id}/change-requests/{crId}/basic-info",
             new { email = "not-an-email" });
 
-        Assert.Equal(HttpStatusCode.BadRequest, patch.StatusCode);
+        // FluentValidation failures now return Laravel-style 422.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, patch.StatusCode);
     }
 
     // -- proposed document attach --------------------------------------------
@@ -349,8 +351,9 @@ public sealed class ChangeRequestLifecycleTests : IClassFixture<EstablishmentsAp
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
 
         var body = await detail.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Acme Events Co", body.GetProperty("live").GetProperty("name").GetString());
-        Assert.Equal("Acme Renamed", body.GetProperty("proposed").GetProperty("name").GetString());
+        var data = body.DataOf();
+        Assert.Equal("Acme Events Co", data.GetProperty("live").GetProperty("name").GetString());
+        Assert.Equal("Acme Renamed", data.GetProperty("proposed").GetProperty("name").GetString());
     }
 
     // -- approve / reject ----------------------------------------------------

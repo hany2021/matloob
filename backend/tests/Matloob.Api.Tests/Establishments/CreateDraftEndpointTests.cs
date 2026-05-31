@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,7 +71,7 @@ public sealed class CreateDraftEndpointTests : IClassFixture<EstablishmentsApiFa
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var root = doc.RootElement;
+        var root = doc.RootElement.DataOf();
 
         var id = root.GetProperty("id").GetGuid();
         Assert.NotEqual(Guid.Empty, id);
@@ -129,6 +130,6 @@ public sealed class CreateDraftEndpointTests : IClassFixture<EstablishmentsApiFa
     {
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        return doc.RootElement.DataOf().GetProperty("id").GetGuid();
     }
 }

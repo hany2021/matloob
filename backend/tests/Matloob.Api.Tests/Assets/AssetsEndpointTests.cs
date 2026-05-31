@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Assets;
 
@@ -73,7 +74,7 @@ public sealed class AssetsEndpointTests : IClassFixture<AssetsApiFactory>
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.GetProperty("id").GetGuid();
+        return doc.RootElement.DataOf().GetProperty("id").GetGuid();
     }
 
     // -- upload ---------------------------------------------------------------
@@ -105,7 +106,7 @@ public sealed class AssetsEndpointTests : IClassFixture<AssetsApiFactory>
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var root = doc.RootElement;
+        var root = doc.RootElement.DataOf();
         Assert.NotEqual(Guid.Empty, root.GetProperty("id").GetGuid());
         Assert.Equal("Authorization Letter.pdf", root.GetProperty("originalFileName").GetString());
         Assert.Equal("application/pdf", root.GetProperty("contentType").GetString());
@@ -168,7 +169,7 @@ public sealed class AssetsEndpointTests : IClassFixture<AssetsApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var root = doc.RootElement;
+        var root = doc.RootElement.DataOf();
         Assert.Equal(id, root.GetProperty("id").GetGuid());
         Assert.Equal("doc.pdf", root.GetProperty("originalFileName").GetString());
         Assert.Equal("application/pdf", root.GetProperty("contentType").GetString());

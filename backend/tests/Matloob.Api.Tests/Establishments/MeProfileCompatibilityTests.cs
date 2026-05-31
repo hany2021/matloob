@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Establishments;
 
@@ -96,19 +97,20 @@ public sealed class MeProfileCompatibilityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
 
         // Laravel EstablishmentResource top-level keys.
-        Assert.Equal(id, doc.RootElement.GetProperty("id").GetGuid());
-        Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("name").GetString()));
-        Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("email").GetString()));
-        Assert.Equal(0, doc.RootElement.GetProperty("profile_complete_percentage").GetInt32());
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("logo").ValueKind);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("rate").ValueKind);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("total_reviews").ValueKind);
-        Assert.False(doc.RootElement.GetProperty("can_manage_events").GetBoolean());
+        Assert.Equal(id, data.GetProperty("id").GetGuid());
+        Assert.False(string.IsNullOrEmpty(data.GetProperty("name").GetString()));
+        Assert.False(string.IsNullOrEmpty(data.GetProperty("email").GetString()));
+        Assert.Equal(0, data.GetProperty("profile_complete_percentage").GetInt32());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("logo").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("rate").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("total_reviews").ValueKind);
+        Assert.False(data.GetProperty("can_manage_events").GetBoolean());
 
         // Profile composite block.
-        var profile = doc.RootElement.GetProperty("profile");
+        var profile = data.GetProperty("profile");
         var general = profile.GetProperty("general_info");
         Assert.Equal("Approved", general.GetProperty("establishment_status").GetString());
         Assert.Equal("CR-ME-PROF-1", general.GetProperty("cr_number").GetString());
@@ -136,7 +138,7 @@ public sealed class MeProfileCompatibilityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(id, doc.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal(id, doc.RootElement.DataOf().GetProperty("id").GetGuid());
     }
 
     [Fact]
@@ -152,7 +154,7 @@ public sealed class MeProfileCompatibilityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(id, doc.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal(id, doc.RootElement.DataOf().GetProperty("id").GetGuid());
     }
 
     [Fact]

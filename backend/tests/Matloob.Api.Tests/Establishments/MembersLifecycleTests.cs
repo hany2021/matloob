@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -123,7 +124,8 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var members = doc.RootElement.GetProperty("members").EnumerateArray().ToList();
+        var data = doc.RootElement.DataOf();
+        var members = data.GetProperty("members").EnumerateArray().ToList();
         Assert.Single(members);
         Assert.Equal(Helpers.Creator.Sub, members[0].GetProperty("userId").GetString());
         Assert.Equal("Owner", members[0].GetProperty("role").GetString());
@@ -216,7 +218,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var addBody = await addResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var memberId = addBody.GetProperty("id").GetGuid();
+        var memberId = addBody.DataOf().GetProperty("id").GetGuid();
 
         // Update HR -> Accountant.
         var patch = await creator.PatchAsJsonAsync(
@@ -285,7 +287,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         var patch = await admin.PatchAsJsonAsync(
             $"/api/v1/establishments/{id}/members/{memberId}",
@@ -306,7 +308,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         var del = await creator.DeleteAsync($"/api/v1/establishments/{id}/members/{memberId}");
         Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
@@ -314,7 +316,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
         // Removed member no longer appears in the list.
         var list = await creator.GetAsync($"/api/v1/establishments/{id}/members");
         var listBody = await list.Content.ReadFromJsonAsync<JsonElement>();
-        var memberIds = listBody.GetProperty("members").EnumerateArray()
+        var memberIds = listBody.DataOf().GetProperty("members").EnumerateArray()
             .Select(e => e.GetProperty("id").GetGuid()).ToList();
         Assert.DoesNotContain(memberId, memberIds);
     }
@@ -348,7 +350,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         var del = await admin.DeleteAsync($"/api/v1/establishments/{id}/members/{memberId}");
         Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
@@ -365,7 +367,7 @@ public sealed class MembersLifecycleTests : IClassFixture<EstablishmentsApiFacto
             $"/api/v1/establishments/{id}/members",
             new { userId = HR.Sub, role = "HR" });
         var memberId = (await add.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("id").GetGuid();
+            .DataOf().GetProperty("id").GetGuid();
 
         // HR tries to remove themselves -> 403 (not Owner).
         var del = await hr.DeleteAsync($"/api/v1/establishments/{id}/members/{memberId}");

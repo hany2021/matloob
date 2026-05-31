@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,9 +71,10 @@ public sealed class LegacyMultipartEvaluationTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var evaluationId = doc.RootElement.GetProperty("id").GetGuid();
+        var data = doc.RootElement.DataOf();
+        var evaluationId = data.GetProperty("id").GetGuid();
         // No 'contract' field anywhere in the response.
-        Assert.False(doc.RootElement.TryGetProperty("contract", out _));
+        Assert.False(data.TryGetProperty("contract", out _));
 
         // Verify EvaluationAsset row + Asset row exist.
         using var scope = _factory.CreateDbScope();
@@ -144,7 +146,7 @@ public sealed class LegacyMultipartEvaluationTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var evaluationId = doc.RootElement.GetProperty("id").GetGuid();
+        var evaluationId = doc.RootElement.DataOf().GetProperty("id").GetGuid();
 
         using var scope = _factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

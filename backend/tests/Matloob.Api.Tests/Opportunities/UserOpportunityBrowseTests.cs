@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
 
 namespace Matloob.Api.Tests.Opportunities;
@@ -57,8 +58,9 @@ public sealed class UserOpportunityBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        var first = doc.RootElement.EnumerateArray()
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(JsonValueKind.Array, data.ValueKind);
+        var first = data.EnumerateArray()
             .First(e => e.GetProperty("name").GetString() == "Servers Needed");
 
         // Laravel snake_case key presence.
@@ -87,7 +89,7 @@ public sealed class UserOpportunityBrowseTests
         var legacy = await client.GetStringAsync("/api/users/opportunities");
         var canonical = await client.GetStringAsync("/api/v1/users/opportunities");
 
-        Assert.Equal(legacy, canonical);
+        Assert.Equal(EnvelopeTestExtensions.UnwrapData(legacy), EnvelopeTestExtensions.UnwrapData(canonical));
     }
 
     [Fact]
@@ -108,7 +110,7 @@ public sealed class UserOpportunityBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var names = doc.RootElement.EnumerateArray()
+        var names = doc.RootElement.DataOf().EnumerateArray()
             .Select(e => e.GetProperty("name").GetString()!)
             .ToList();
 
@@ -131,7 +133,7 @@ public sealed class UserOpportunityBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+        Assert.DoesNotContain(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("name").GetString() == "For establishments");
     }
 
@@ -148,7 +150,7 @@ public sealed class UserOpportunityBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var mine = doc.RootElement.EnumerateArray()
+        var mine = doc.RootElement.DataOf().EnumerateArray()
             .First(e => e.GetProperty("name").GetString() == "Applied opp");
         Assert.True(mine.GetProperty("is_applied").GetBoolean());
     }
@@ -166,7 +168,7 @@ public sealed class UserOpportunityBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var other = doc.RootElement.EnumerateArray()
+        var other = doc.RootElement.DataOf().EnumerateArray()
             .First(e => e.GetProperty("name").GetString() == "Other applied");
         Assert.False(other.GetProperty("is_applied").GetBoolean());
     }
@@ -201,8 +203,9 @@ public sealed class UserOpportunityBrowseTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(oppId, doc.RootElement.GetProperty("id").GetGuid());
-        Assert.Equal("Detail target", doc.RootElement.GetProperty("name").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(oppId, data.GetProperty("id").GetGuid());
+        Assert.Equal("Detail target", data.GetProperty("name").GetString());
     }
 
     [Fact]

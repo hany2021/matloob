@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -102,9 +103,10 @@ public sealed class OpportunityWriteTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var id = doc.RootElement.GetProperty("id").GetGuid();
-        Assert.Equal("Created opp", doc.RootElement.GetProperty("name").GetString());
-        Assert.Equal("Upcoming", doc.RootElement.GetProperty("status").GetString());
+        var data = doc.RootElement.DataOf();
+        var id = data.GetProperty("id").GetGuid();
+        Assert.Equal("Created opp", data.GetProperty("name").GetString());
+        Assert.Equal("Upcoming", data.GetProperty("status").GetString());
 
         var persisted = await OaoHelpers.LoadOpportunityAsync(_factory, id);
         Assert.NotNull(persisted);
@@ -131,7 +133,7 @@ public sealed class OpportunityWriteTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Active", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Active", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -150,7 +152,7 @@ public sealed class OpportunityWriteTests
     }
 
     [Fact]
-    public async Task Create_ValidationFailure_Returns400()
+    public async Task Create_ValidationFailure_Returns422()
     {
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
         var response = await client.PostAsJsonAsync(
@@ -168,7 +170,8 @@ public sealed class OpportunityWriteTests
                 lon = 46.6m,
                 required_personnel = 1,
             });
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // FluentValidation failures now return Laravel-style 422.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     // -- update -------------------------------------------------------------
@@ -187,7 +190,7 @@ public sealed class OpportunityWriteTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("After", doc.RootElement.GetProperty("name").GetString());
+        Assert.Equal("After", doc.RootElement.DataOf().GetProperty("name").GetString());
 
         var persisted = await OaoHelpers.LoadOpportunityAsync(_factory, oppId);
         Assert.Equal("After", persisted!.Name);
@@ -249,7 +252,7 @@ public sealed class OpportunityWriteTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Ended", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Ended", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -282,9 +285,10 @@ public sealed class OpportunityWriteTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(assetId, doc.RootElement.GetProperty("asset_id").GetGuid());
-        Assert.False(doc.RootElement.TryGetProperty("relative_path", out _));
-        Assert.False(doc.RootElement.TryGetProperty("stored_file_name", out _));
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(assetId, data.GetProperty("asset_id").GetGuid());
+        Assert.False(data.TryGetProperty("relative_path", out _));
+        Assert.False(data.TryGetProperty("stored_file_name", out _));
     }
 
     [Fact]

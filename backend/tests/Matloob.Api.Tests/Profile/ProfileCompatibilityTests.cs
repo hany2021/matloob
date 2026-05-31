@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Api.Tests.Establishments;
 
 namespace Matloob.Api.Tests.Profile;
@@ -66,26 +67,29 @@ public sealed class ProfileCompatibilityTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
+        // Laravel UserResource is wrapped in a { data } envelope.
+        var data = doc.RootElement.GetProperty("data");
+
         // Laravel UserResource snake_case keys.
         Assert.Equal(FreshUser.Sub,
-            doc.RootElement.GetProperty("identity_id").GetString());
+            data.GetProperty("identity_id").GetString());
         Assert.Equal(JsonValueKind.Null,
-            doc.RootElement.GetProperty("nationality").ValueKind);
+            data.GetProperty("nationality").ValueKind);
         Assert.Equal(JsonValueKind.Null,
-            doc.RootElement.GetProperty("id_number").ValueKind);
+            data.GetProperty("id_number").ValueKind);
         Assert.Equal(JsonValueKind.Null,
-            doc.RootElement.GetProperty("bank_account").ValueKind);
+            data.GetProperty("bank_account").ValueKind);
         Assert.Equal(JsonValueKind.Array,
-            doc.RootElement.GetProperty("languages").ValueKind);
+            data.GetProperty("languages").ValueKind);
         Assert.Equal(JsonValueKind.Array,
-            doc.RootElement.GetProperty("professions").ValueKind);
+            data.GetProperty("professions").ValueKind);
         Assert.Equal(JsonValueKind.Array,
-            doc.RootElement.GetProperty("certificates").ValueKind);
+            data.GetProperty("certificates").ValueKind);
         Assert.Equal(JsonValueKind.Array,
-            doc.RootElement.GetProperty("uncompleted_profile_sections").ValueKind);
-        Assert.False(doc.RootElement.GetProperty("onboarded").GetBoolean());
+            data.GetProperty("uncompleted_profile_sections").ValueKind);
+        Assert.False(data.GetProperty("onboarded").GetBoolean());
         Assert.Equal(0,
-            doc.RootElement.GetProperty("profile_complete_percentage").GetInt32());
+            data.GetProperty("profile_complete_percentage").GetInt32());
     }
 
     [Fact]
@@ -98,15 +102,18 @@ public sealed class ProfileCompatibilityTests
         using var v1Doc = JsonDocument.Parse(await client.GetStringAsync("/api/v1/profile"));
         using var legacyDoc = JsonDocument.Parse(await client.GetStringAsync("/api/users/profile"));
 
-        Assert.Equal(
-            v1Doc.RootElement.GetProperty("identity_id").GetString(),
-            legacyDoc.RootElement.GetProperty("identity_id").GetString());
-        Assert.Equal(
-            v1Doc.RootElement.GetProperty("id").GetGuid(),
-            legacyDoc.RootElement.GetProperty("id").GetGuid());
+        var v1Data = v1Doc.RootElement.GetProperty("data");
+        var legacyData = legacyDoc.RootElement.GetProperty("data");
 
-        var v1Props = v1Doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
-        var legacyProps = legacyDoc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
+        Assert.Equal(
+            v1Data.GetProperty("identity_id").GetString(),
+            legacyData.GetProperty("identity_id").GetString());
+        Assert.Equal(
+            v1Data.GetProperty("id").GetGuid(),
+            legacyData.GetProperty("id").GetGuid());
+
+        var v1Props = v1Data.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
+        var legacyProps = legacyData.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
         Assert.Equal(v1Props, legacyProps);
     }
 
@@ -130,8 +137,8 @@ public sealed class ProfileCompatibilityTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        Assert.Equal(0, doc.RootElement.GetArrayLength());
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.DataOf().ValueKind);
+        Assert.Equal(0, doc.RootElement.DataOf().GetArrayLength());
     }
 
     [Fact]
@@ -157,7 +164,7 @@ public sealed class ProfileCompatibilityTests
 
         await using var stream = await listResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var mine = doc.RootElement.EnumerateArray()
+        var mine = doc.RootElement.DataOf().EnumerateArray()
             .Single(e => e.GetProperty("id").GetGuid() == id);
 
         // Laravel snake_case shape.
@@ -186,7 +193,7 @@ public sealed class ProfileCompatibilityTests
 
         await using var stream = await listResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        foreach (var item in doc.RootElement.EnumerateArray())
+        foreach (var item in doc.RootElement.DataOf().EnumerateArray())
         {
             var status = item.GetProperty("status").GetString();
             Assert.NotEqual("Draft", status);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Establishments;
 
@@ -46,7 +47,7 @@ public sealed class LegacyCommissionerHeaderTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(secondId, doc.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal(secondId, doc.RootElement.DataOf().GetProperty("id").GetGuid());
     }
 
     [Fact]

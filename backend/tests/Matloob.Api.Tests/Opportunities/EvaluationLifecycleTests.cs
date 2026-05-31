@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,11 +62,12 @@ public sealed class EvaluationLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(_offerId, doc.RootElement.GetProperty("offer_id").GetGuid());
-        Assert.Equal("user", doc.RootElement.GetProperty("evaluator").GetProperty("type").GetString());
-        Assert.Equal("organization", doc.RootElement.GetProperty("evaluable").GetProperty("type").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(_offerId, data.GetProperty("offer_id").GetGuid());
+        Assert.Equal("user", data.GetProperty("evaluator").GetProperty("type").GetString());
+        Assert.Equal("organization", data.GetProperty("evaluable").GetProperty("type").GetString());
         // No "contract" field anywhere.
-        Assert.False(doc.RootElement.TryGetProperty("contract", out _));
+        Assert.False(data.TryGetProperty("contract", out _));
     }
 
     [Fact]
@@ -164,7 +166,7 @@ public sealed class EvaluationLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("organization", doc.RootElement.GetProperty("evaluator").GetProperty("type").GetString());
+        Assert.Equal("organization", doc.RootElement.DataOf().GetProperty("evaluator").GetProperty("type").GetString());
     }
 
     [Fact]
@@ -176,7 +178,7 @@ public sealed class EvaluationLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Contains(doc.RootElement.EnumerateArray(),
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == _offerId);
     }
 
@@ -192,7 +194,7 @@ public sealed class EvaluationLifecycleTests
             .GetAsync("/api/v1/users/offers/unevaluated");
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+        Assert.DoesNotContain(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == _offerId);
     }
 }

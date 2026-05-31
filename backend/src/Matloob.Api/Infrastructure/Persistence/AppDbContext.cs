@@ -66,6 +66,16 @@ public sealed class AppDbContext : DbContext
     // on authenticated requests.
     public DbSet<User> Users => Set<User>();
 
+    // User-profile child collections (migrated from the Laravel profile tables).
+    public DbSet<UserEducation> UserEducation => Set<UserEducation>();
+    public DbSet<UserExperience> UserExperiences => Set<UserExperience>();
+    public DbSet<UserCertificate> UserCertificates => Set<UserCertificate>();
+    public DbSet<UserSkill> UserSkills => Set<UserSkill>();
+    public DbSet<UserLanguageProficiency> UserLanguages => Set<UserLanguageProficiency>();
+    public DbSet<UserProfession> UserProfessions => Set<UserProfession>();
+    public DbSet<SupportiveDocument> SupportiveDocuments => Set<SupportiveDocument>();
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
+
     // Opportunities aggregate + side tables (assets + success-management
     // criteria + criterion assets).
     public DbSet<Opportunity> Opportunities => Set<Opportunity>();

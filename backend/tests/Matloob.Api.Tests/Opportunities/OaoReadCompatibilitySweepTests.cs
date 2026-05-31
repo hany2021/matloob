@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Opportunities;
 
@@ -93,8 +94,10 @@ public sealed class OaoReadCompatibilitySweepTests
     {
         var client = _factory.CreateClientFor(OaoHelpers.Worker);
         Assert.Equal(
-            await client.GetStringAsync("/api/users/opportunities"),
-            await client.GetStringAsync("/api/v1/users/opportunities"));
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync("/api/users/opportunities")),
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync("/api/v1/users/opportunities")));
     }
 
     [Fact]
@@ -111,10 +114,12 @@ public sealed class OaoReadCompatibilitySweepTests
     {
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
         Assert.Equal(
-            await client.GetStringAsync(
-                $"/api/establishments/opportunities?establishment_id={_ownEstablishment}"),
-            await client.GetStringAsync(
-                $"/api/v1/establishments/{_ownEstablishment}/browse/opportunities"));
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/establishments/opportunities?establishment_id={_ownEstablishment}")),
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/v1/establishments/{_ownEstablishment}/browse/opportunities")));
     }
 
     [Fact]
@@ -133,10 +138,12 @@ public sealed class OaoReadCompatibilitySweepTests
     {
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
         Assert.Equal(
-            await client.GetStringAsync(
-                $"/api/establishments/me/opportunities?establishment_id={_ownEstablishment}"),
-            await client.GetStringAsync(
-                $"/api/v1/establishments/{_ownEstablishment}/opportunities"));
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/establishments/me/opportunities?establishment_id={_ownEstablishment}")),
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/v1/establishments/{_ownEstablishment}/opportunities")));
     }
 
     [Fact]
@@ -167,10 +174,12 @@ public sealed class OaoReadCompatibilitySweepTests
     {
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
         Assert.Equal(
-            await client.GetStringAsync(
-                $"/api/establishments/opportunities/applications?establishment_id={_ownEstablishment}"),
-            await client.GetStringAsync(
-                $"/api/v1/establishments/{_ownEstablishment}/browse/applications"));
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/establishments/opportunities/applications?establishment_id={_ownEstablishment}")),
+            EnvelopeTestExtensions.UnwrapData(
+                await client.GetStringAsync(
+                    $"/api/v1/establishments/{_ownEstablishment}/browse/applications")));
     }
 
     [Fact]
@@ -183,7 +192,8 @@ public sealed class OaoReadCompatibilitySweepTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("organization", doc.RootElement.GetProperty("applier_type").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("organization", data.GetProperty("applier_type").GetString());
     }
 
     [Fact]
@@ -196,7 +206,8 @@ public sealed class OaoReadCompatibilitySweepTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("user", doc.RootElement.GetProperty("applier_type").GetString());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("user", data.GetProperty("applier_type").GetString());
     }
 
     // -- helper -------------------------------------------------------------

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
@@ -89,12 +90,12 @@ public sealed class OaoEndToEndJourneyTests
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var createJson = await createResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(createJson, "POST opportunity");
-        var oppId = JsonDocument.Parse(createJson).RootElement.GetProperty("id").GetGuid();
+        var oppId = JsonDocument.Parse(createJson).RootElement.DataOf().GetProperty("id").GetGuid();
 
         // Worker browses (should see the new opportunity).
         var browseJson = await worker.GetStringAsync("/api/users/opportunities");
         AssertNoForbiddenKeys(browseJson, "browse opportunities");
-        Assert.Contains(JsonDocument.Parse(browseJson).RootElement.EnumerateArray(),
+        Assert.Contains(JsonDocument.Parse(browseJson).RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == oppId);
 
         // Worker applies.
@@ -106,7 +107,7 @@ public sealed class OaoEndToEndJourneyTests
         var applicantsJson = await owner.GetStringAsync(
             $"/api/v1/establishments/{_establishmentId}/opportunities/{oppId}/applications");
         AssertNoForbiddenKeys(applicantsJson, "own-opportunity applications");
-        Assert.True(JsonDocument.Parse(applicantsJson).RootElement.GetArrayLength() >= 1);
+        Assert.True(JsonDocument.Parse(applicantsJson).RootElement.DataOf().GetArrayLength() >= 1);
     }
 
     // -- 2. Offer journey: send → accept ----------------------------------
@@ -126,7 +127,7 @@ public sealed class OaoEndToEndJourneyTests
         Assert.Equal(HttpStatusCode.Created, sendResp.StatusCode);
         var sendJson = await sendResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(sendJson, "send offer");
-        var offerId = JsonDocument.Parse(sendJson).RootElement.GetProperty("id").GetGuid();
+        var offerId = JsonDocument.Parse(sendJson).RootElement.DataOf().GetProperty("id").GetGuid();
 
         var worker = _factory.CreateClientFor(OaoHelpers.Worker);
         var listJson = await worker.GetStringAsync("/api/users/offers");
@@ -139,8 +140,9 @@ public sealed class OaoEndToEndJourneyTests
         AssertNoForbiddenKeys(acceptJson, "accept offer");
 
         using var acceptDoc = JsonDocument.Parse(acceptJson);
-        Assert.Equal("Accepted", acceptDoc.RootElement.GetProperty("status").GetString());
-        Assert.Equal(JsonValueKind.String, acceptDoc.RootElement.GetProperty("accepted_at").ValueKind);
+        var acceptData = acceptDoc.RootElement.DataOf();
+        Assert.Equal("Accepted", acceptData.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.String, acceptData.GetProperty("accepted_at").ValueKind);
     }
 
     // -- 3. Cancellation journey: accept → cancel → approve --------------
@@ -159,7 +161,7 @@ public sealed class OaoEndToEndJourneyTests
             $"/api/v1/establishments/{_establishmentId}/offers/send",
             new { applicant_id = appId, monthly_salary = 5000m });
         var offerId = JsonDocument.Parse(await sendResp.Content.ReadAsStringAsync())
-            .RootElement.GetProperty("id").GetGuid();
+            .RootElement.DataOf().GetProperty("id").GetGuid();
 
         await worker.PostAsync($"/api/users/offers/{offerId}/accept", content: null);
 
@@ -182,7 +184,7 @@ public sealed class OaoEndToEndJourneyTests
         AssertNoForbiddenKeys(approveJson, "approve cancellation");
 
         using var approveDoc = JsonDocument.Parse(approveJson);
-        Assert.Equal("Canceled", approveDoc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Canceled", approveDoc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- 4. Sponsor journey: send-with-sponsor → sponsor-accept ----------
@@ -207,9 +209,9 @@ public sealed class OaoEndToEndJourneyTests
         Assert.Equal(HttpStatusCode.Created, sendResp.StatusCode);
         var sendJson = await sendResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(sendJson, "send offer with sponsor");
-        var offerId = JsonDocument.Parse(sendJson).RootElement.GetProperty("id").GetGuid();
+        var offerId = JsonDocument.Parse(sendJson).RootElement.DataOf().GetProperty("id").GetGuid();
         Assert.Equal("PendingSponsorApproval",
-            JsonDocument.Parse(sendJson).RootElement.GetProperty("status").GetString());
+            JsonDocument.Parse(sendJson).RootElement.DataOf().GetProperty("status").GetString());
 
         var sponsor = _factory.CreateClientFor(SponsorOwner);
 
@@ -226,7 +228,7 @@ public sealed class OaoEndToEndJourneyTests
         var acceptJson = await sponsorAcceptResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(acceptJson, "sponsor accept");
         Assert.Equal("Pending",
-            JsonDocument.Parse(acceptJson).RootElement.GetProperty("status").GetString());
+            JsonDocument.Parse(acceptJson).RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- 5. Evaluation journey: accept → both-sides-evaluate → Completed --
@@ -246,7 +248,7 @@ public sealed class OaoEndToEndJourneyTests
             $"/api/v1/establishments/{_establishmentId}/offers/send",
             new { applicant_id = appId, monthly_salary = 5000m });
         var offerId = JsonDocument.Parse(await sendResp.Content.ReadAsStringAsync())
-            .RootElement.GetProperty("id").GetGuid();
+            .RootElement.DataOf().GetProperty("id").GetGuid();
 
         await worker.PostAsync($"/api/users/offers/{offerId}/accept", content: null);
 

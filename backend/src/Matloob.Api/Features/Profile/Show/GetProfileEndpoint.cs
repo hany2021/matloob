@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using FastEndpoints;
+using Matloob.Api.Features.Common;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Profile.Show;
@@ -10,21 +12,22 @@ namespace Matloob.Api.Features.Profile.Show;
 /// <c>GET /api/v1/profile</c> (canonical) and <c>GET /api/users/profile</c>
 /// (Laravel-compat alias) — return the current user's profile.
 ///
-/// Response shape mirrors Laravel <c>UserResource::toArray()</c> field-for-
-/// field (snake_case keys). The local <c>users</c> table only carries
-/// (id, name, email, phone) today, so all other Laravel relations land as
-/// <c>null</c> or <c>[]</c> placeholders. Each placeholder is replaced as
-/// the underlying feature is migrated (personal-info, education, skills,
-/// experiences, certificates, photo). See
-/// <c>docs/40-api-migration-readiness.md §6</c> for the open product
-/// decisions blocking the matching PATCH endpoints.
+/// Response is wrapped in the Laravel <c>{ "data": { ... } }</c> envelope
+/// (<see cref="DataEnvelope{T}"/>) because the public frontend's profile hook
+/// reads <c>response.data.data</c>. The inner object mirrors Laravel
+/// <c>UserResource::toArray()</c> field-for-field (snake_case keys).
+///
+/// Relations are projected from the migrated profile tables (education,
+/// experiences, certificates, skills, languages, professions, supportive
+/// documents, bank account) and the reference lookups (city/region/
+/// nationality/bank). Identity-sourced fields (id_number, gender, age, dob,
+/// nationality) surface once the sync layer backfills them.
 ///
 /// Auth: any authenticated principal. Anonymous → 401. The
 /// <c>CurrentUserSyncMiddleware</c> has already created or refreshed the
-/// local row by the time this endpoint runs; if that failed we surface
-/// 401 (the principal can retry).
+/// local row by the time this endpoint runs.
 /// </summary>
-public sealed class GetProfileEndpoint : EndpointWithoutRequest<ProfileResponse>
+public sealed class GetProfileEndpoint : EndpointWithoutRequest<DataEnvelope<ProfileResponse>>
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
@@ -37,20 +40,17 @@ public sealed class GetProfileEndpoint : EndpointWithoutRequest<ProfileResponse>
 
     public override void Configure()
     {
-        // Two routes for back-compat: the legacy /api/users/profile that
-        // the Laravel public frontend already calls, and the new
-        // /api/v1/profile that future clients should use.
         Get("/api/v1/profile", "/api/users/profile");
         Description(b => b
-            .Produces<ProfileResponse>(StatusCodes.Status200OK)
+            .Produces<DataEnvelope<ProfileResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .WithTags("Profile"));
         Summary(s =>
         {
             s.Summary = "Current user's profile (Laravel UserResource shape).";
             s.Description =
-                "Authenticated. Snake_case shape matches Laravel UserResource. " +
-                "Relations not yet migrated land as null/[] placeholders.";
+                "Authenticated. Snake_case shape matches Laravel UserResource, " +
+                "wrapped in a { data } envelope.";
         });
     }
 
@@ -72,59 +72,86 @@ public sealed class GetProfileEndpoint : EndpointWithoutRequest<ProfileResponse>
             return;
         }
 
-        var response = new ProfileResponse
-        {
-            Id = user.Id,
-            Name = user.Name,
-            Email = user.Email,
-            PhoneNumber = user.Phone,
-            IdentityId = user.IdentityId,
-
-            // Laravel-compat placeholders. Each lands when its feature
-            // is migrated (docs/40-api-migration-readiness.md §6/§7).
-            IdNumber = null,
-            Gender = null,
-            Nationality = null,
-            Age = null,
-            DateOfBirth = null,
-            HijriDateOfBirth = null,
-            Bio = null,
-            AdditionalPhoneNumber = null,
-            YearsOfExperience = null,
-            PassportCopy = null,
-            Photo = null,
-            Professions = [],
-            Experiences = [],
-            Certificates = [],
-            Skills = [],
-            Education = [],
-            City = null,
-            Region = null,
-            BankAccount = null,
-            Languages = [],
-            SupportiveDocuments = [],
-            Participations = [],
-            ProfileCompletePercentage = 0,
-            Evaluations = [],
-            Reviews = [],
-            Rate = null,
-            TotalReviews = null,
-            Onboarded = false,
-            UncompletedProfileSections = ["personal-info", "education-info", "interests-info", "experiences-info"],
-        };
-
-        await Send.OkAsync(response, ct);
+        var response = await ProfileReadMapper.BuildAsync(_db, user, ct);
+        await Send.OkAsync(new DataEnvelope<ProfileResponse>(response), ct);
     }
 }
 
+// ---- Nested resource DTOs (snake_case, mirroring the Laravel sub-resources) --
+
+public sealed record RefDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name);
+
+public sealed record AssetRefDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("url")] string Url);
+
+public sealed record BankAccountDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("bank")] RefDto Bank,
+    [property: JsonPropertyName("iban")] string Iban);
+
+public sealed record LanguageDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("level")] string Level,
+    [property: JsonPropertyName("level_label")] string LevelLabel);
+
+public sealed record SkillDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("level")] string Level);
+
+public sealed record EducationDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("degree")] string Degree,
+    [property: JsonPropertyName("degree_label")] string DegreeLabel,
+    [property: JsonPropertyName("specialization")] string? Specialization,
+    [property: JsonPropertyName("gpa_system")] int GpaSystem,
+    [property: JsonPropertyName("gpa")] decimal Gpa,
+    [property: JsonPropertyName("graduation_year")] int GraduationYear,
+    [property: JsonPropertyName("copy")] AssetRefDto? Copy);
+
+public sealed record ExperienceDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("company")] string Company,
+    [property: JsonPropertyName("position")] string Position,
+    [property: JsonPropertyName("from")] string From,
+    [property: JsonPropertyName("to")] string? To,
+    [property: JsonPropertyName("current")] bool Current,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("type_label")] string TypeLabel);
+
+public sealed record CertificateDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("issued_by")] string? IssuedBy,
+    [property: JsonPropertyName("issued_at")] string? IssuedAt,
+    [property: JsonPropertyName("copy")] AssetRefDto? Copy);
+
+public sealed record ProfessionDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("icon")] string? Icon,
+    [property: JsonPropertyName("for_vacancy")] bool ForVacancy,
+    [property: JsonPropertyName("is_other")] bool IsOther,
+    [property: JsonPropertyName("other")] string? Other);
+
+public sealed record SupportiveDocumentDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("file")] AssetRefDto? File,
+    [property: JsonPropertyName("url")] string? Url);
+
 /// <summary>
-/// Wire shape returned by <c>GET /api/v1/profile</c> + <c>GET /api/users/profile</c>.
-/// Property names use snake_case via <see cref="JsonPropertyNameAttribute"/>
-/// so the public frontend's Laravel-era parser keeps working unchanged.
-///
-/// Field set is a 1:1 mirror of Laravel <c>UserResource::toArray()</c>,
-/// plus an <c>identity_id</c> extension (sub claim) that new clients may
-/// consume but Laravel parsers ignore.
+/// Inner object of <c>GET /api/v1/profile</c> (wrapped in
+/// <see cref="DataEnvelope{T}"/>). Property names use snake_case via
+/// <see cref="JsonPropertyNameAttribute"/> — a 1:1 mirror of Laravel
+/// <c>UserResource::toArray()</c>, plus an <c>identity_id</c> extension.
 /// </summary>
 public sealed class ProfileResponse
 {
@@ -228,9 +255,8 @@ public sealed class ProfileResponse
     public IReadOnlyList<string> UncompletedProfileSections { get; init; } = [];
 
     /// <summary>
-    /// New-client extension: the IdM <c>sub</c> claim that uniquely
-    /// identifies the user. Laravel parsers ignore unknown keys, so this
-    /// is safe to surface alongside the legacy field set.
+    /// New-client extension: the IdM <c>sub</c> claim. Laravel parsers ignore
+    /// unknown keys, so this is safe alongside the legacy field set.
     /// </summary>
     [JsonPropertyName("identity_id")]
     public string IdentityId { get; init; } = string.Empty;

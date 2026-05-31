@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Opportunities;
 
@@ -73,7 +74,7 @@ public sealed class EstablishmentApplicationReadTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var oppNames = doc.RootElement.EnumerateArray()
+        var oppNames = doc.RootElement.DataOf().EnumerateArray()
             .Select(e => e.GetProperty("opportunity").GetProperty("name").GetString())
             .ToList();
         Assert.Contains("Pub A", oppNames);
@@ -111,8 +112,9 @@ public sealed class EstablishmentApplicationReadTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("organization", doc.RootElement.GetProperty("applier_type").GetString());
-        Assert.True(doc.RootElement.TryGetProperty("applied_by", out _));
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("organization", data.GetProperty("applier_type").GetString());
+        Assert.True(data.TryGetProperty("applied_by", out _));
     }
 
     // -- own-opportunity applicants list ------------------------------------
@@ -135,8 +137,9 @@ public sealed class EstablishmentApplicationReadTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.True(doc.RootElement.GetArrayLength() >= 1);
-        foreach (var item in doc.RootElement.EnumerateArray())
+        var data = doc.RootElement.DataOf();
+        Assert.True(data.GetArrayLength() >= 1);
+        foreach (var item in data.EnumerateArray())
         {
             // Every row's opportunity must be the one in the path.
             Assert.Equal(ownOpp,
@@ -202,6 +205,6 @@ public sealed class EstablishmentApplicationReadTests
             $"/api/establishments/me/opportunities/{opp}/applications?establishment_id={_ownEstablishment}");
         var canonical = await client.GetStringAsync(
             $"/api/v1/establishments/{_ownEstablishment}/opportunities/{opp}/applications");
-        Assert.Equal(legacy, canonical);
+        Assert.Equal(EnvelopeTestExtensions.UnwrapData(legacy), EnvelopeTestExtensions.UnwrapData(canonical));
     }
 }

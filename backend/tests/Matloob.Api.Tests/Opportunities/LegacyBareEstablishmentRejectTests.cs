@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Establishments;
 using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
@@ -71,7 +72,7 @@ public sealed class LegacyBareEstablishmentRejectTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Rejected", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
 
         // Confirm DB row has null reason on the persisted offer (the
         // bare-POST path doesn't supply one).

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Opportunities;
 
@@ -53,8 +54,9 @@ public sealed class UserApplicationReadTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        var oppNames = doc.RootElement.EnumerateArray()
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(JsonValueKind.Array, data.ValueKind);
+        var oppNames = data.EnumerateArray()
             .Select(e => e.GetProperty("opportunity").GetProperty("name").GetString())
             .ToList();
         Assert.Contains("App-self", oppNames);
@@ -72,7 +74,7 @@ public sealed class UserApplicationReadTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var first = doc.RootElement.EnumerateArray().First();
+        var first = doc.RootElement.DataOf().EnumerateArray().First();
         Assert.True(first.TryGetProperty("id", out _));
         Assert.True(first.TryGetProperty("applier_type", out var applierType));
         Assert.Equal("user", applierType.GetString());
@@ -95,7 +97,7 @@ public sealed class UserApplicationReadTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(appId, doc.RootElement.GetProperty("id").GetGuid());
+        Assert.Equal(appId, doc.RootElement.DataOf().GetProperty("id").GetGuid());
     }
 
     [Fact]
@@ -118,6 +120,6 @@ public sealed class UserApplicationReadTests
         var client = _factory.CreateClientFor(OaoHelpers.Worker);
         var legacy = await client.GetStringAsync("/api/users/opportunities/applications");
         var canonical = await client.GetStringAsync("/api/v1/users/opportunities/applications");
-        Assert.Equal(legacy, canonical);
+        Assert.Equal(EnvelopeTestExtensions.UnwrapData(legacy), EnvelopeTestExtensions.UnwrapData(canonical));
     }
 }

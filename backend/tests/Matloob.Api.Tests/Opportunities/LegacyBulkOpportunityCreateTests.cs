@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Tests.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -71,9 +72,10 @@ public sealed class LegacyBulkOpportunityCreateTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
-        Assert.Equal(1, doc.RootElement.GetArrayLength());
-        var first = doc.RootElement.EnumerateArray().First();
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(JsonValueKind.Array, data.ValueKind);
+        Assert.Equal(1, data.GetArrayLength());
+        var first = data.EnumerateArray().First();
         Assert.Equal("Bulk legacy 1", first.GetProperty("name").GetString());
         // No Ajeer/contract fields.
         Assert.False(first.TryGetProperty("contract", out _));
@@ -122,8 +124,9 @@ public sealed class LegacyBulkOpportunityCreateTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(2, doc.RootElement.GetArrayLength());
-        var names = doc.RootElement.EnumerateArray()
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(2, data.GetArrayLength());
+        var names = data.EnumerateArray()
             .Select(e => e.GetProperty("name").GetString())
             .ToList();
         Assert.Contains("Bulk legacy A", names);
@@ -211,9 +214,10 @@ public sealed class LegacyBulkOpportunityCreateTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
         // Single object, not array.
-        Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
-        Assert.Equal("Single shape", doc.RootElement.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Object, data.ValueKind);
+        Assert.Equal("Single shape", data.GetProperty("name").GetString());
     }
 
     [Fact]

@@ -1,5 +1,7 @@
+using System.Text.Json;
 using FastEndpoints;
 using FastEndpoints.Swagger;
+using Matloob.Api.Features.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Persistence;
@@ -83,8 +85,15 @@ try
 
     // CORS. Configured via Cors:AllowedOrigins so production can ship with
     // an empty list (same-origin / reverse-proxy) and dev can allow the
-    // Angular admin at http://localhost:4200. Bearer tokens are sent via
-    // the Authorization header, not cookies, so AllowCredentials is off.
+    // Angular admin at http://localhost:4200 and the public Next.js
+    // frontend at http://localhost:3001.
+    //
+    // AllowCredentials() is required because the public frontend's axios
+    // client carries `withCredentials: true` (a holdover from its Laravel
+    // Sanctum days — the new API doesn't read cookies, but the browser
+    // still refuses preflight if the header isn't echoed back). When
+    // credentials are allowed the spec forbids `Allow-Origin: *`, which is
+    // fine here: WithOrigins() always emits a specific origin echo.
     var corsAllowedOrigins = builder.Configuration
         .GetSection("Cors:AllowedOrigins")
         .Get<string[]>() ?? Array.Empty<string>();
@@ -96,6 +105,7 @@ try
                 .WithOrigins(corsAllowedOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
+                .AllowCredentials()
                 .WithExposedHeaders("Content-Disposition"));
         });
     }
@@ -172,7 +182,31 @@ try
     app.UseMiddleware<Matloob.Api.Infrastructure.Identity.UserSync.CurrentUserSyncMiddleware>();
 
     // FastEndpoints wires routing + endpoint discovery from the assembly.
-    app.UseFastEndpoints();
+    // The custom ResponseSerializer applies the global { data } / { data, meta,
+    // links } envelope shim (ResponseEnvelopeShim) so the public frontend's
+    // ApiResponse<T> parser works without per-endpoint changes. DTOs marked
+    // IBypassEnvelope and non–public-frontend route prefixes pass through
+    // unwrapped, identical to the default serializer.
+    app.UseFastEndpoints(c =>
+    {
+        var jsonOptions = c.Serializer.Options;
+        c.Serializer.ResponseSerializer = (rsp, dto, contentType, jsonCtx, ct) =>
+        {
+            var payload = ResponseEnvelopeShim.Wrap(rsp.HttpContext, dto);
+            rsp.ContentType = contentType;
+            return payload is null
+                ? Task.CompletedTask
+                : JsonSerializer.SerializeAsync(rsp.Body, payload, payload.GetType(), jsonOptions, ct);
+        };
+
+        // Validation failures: return Laravel-style 422 with a snake_case
+        // { message, errors } body so the frontend's laravel-precognition client
+        // maps field errors correctly. (Business-rule errors that pass an
+        // explicit status to Send.ErrorsAsync are unaffected.)
+        c.Errors.StatusCode = StatusCodes.Status422UnprocessableEntity;
+        c.Errors.ResponseBuilder = (failures, _, _) =>
+            ValidationErrorResponse.FromFailures(failures);
+    });
 
     if (app.Environment.IsDevelopment())
     {

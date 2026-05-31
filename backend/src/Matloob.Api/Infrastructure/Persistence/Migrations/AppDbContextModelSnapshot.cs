@@ -2782,7 +2782,75 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("translations", (string)null);
                 });
 
-            modelBuilder.Entity("Matloob.Domain.Users.User", b =>
+            modelBuilder.Entity("Matloob.Domain.Users.BankAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BankId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bank_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Iban")
+                        .IsRequired()
+                        .HasMaxLength(34)
+                        .HasColumnType("character varying(34)")
+                        .HasColumnName("iban");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bank_accounts");
+
+                    b.HasIndex("BankId")
+                        .HasDatabaseName("ix_bank_accounts_bank_id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bank_accounts_user_active")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("bank_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.SupportiveDocument", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -2804,10 +2872,108 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("deleted_by");
 
+                    b.Property<Guid?>("FileAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_asset_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("url");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_supportive_documents");
+
+                    b.HasIndex("FileAssetId")
+                        .HasDatabaseName("ix_supportive_documents_file_asset_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_supportive_documents_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("supportive_documents", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AdditionalPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("additional_phone");
+
+                    b.Property<int?>("Age")
+                        .HasColumnType("integer")
+                        .HasColumnName("age");
+
+                    b.Property<string>("Bio")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)")
+                        .HasColumnName("bio");
+
+                    b.Property<Guid?>("CityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("city_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
                     b.Property<string>("Email")
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
+
+                    b.Property<string>("Gender")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("gender");
+
+                    b.Property<string>("IdNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("id_number");
 
                     b.Property<string>("IdentityId")
                         .IsRequired()
@@ -2834,10 +3000,34 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<Guid?>("NationalityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nationality_id");
+
+                    b.Property<bool>("Onboarded")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("onboarded");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("phone");
+
+                    b.Property<Guid?>("PhotoAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("photo_asset_id");
+
+                    b.Property<bool>("ProfileCompleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("profile_completed");
+
+                    b.Property<Guid?>("RegionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("region_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -2847,8 +3037,17 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("updated_by");
 
+                    b.Property<int>("YearsOfExperience")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("years_of_experience");
+
                     b.HasKey("Id")
                         .HasName("pk_users");
+
+                    b.HasIndex("CityId")
+                        .HasDatabaseName("ix_users_city_id");
 
                     b.HasIndex("IdentityId")
                         .IsUnique()
@@ -2859,7 +3058,440 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_users_is_active")
                         .HasFilter("is_deleted = false");
 
+                    b.HasIndex("NationalityId")
+                        .HasDatabaseName("ix_users_nationality_id");
+
+                    b.HasIndex("PhotoAssetId")
+                        .HasDatabaseName("ix_users_photo_asset_id");
+
+                    b.HasIndex("RegionId")
+                        .HasDatabaseName("ix_users_region_id");
+
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserCertificate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CopyAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("copy_asset_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateOnly?>("IssuedAt")
+                        .HasColumnType("date")
+                        .HasColumnName("issued_at");
+
+                    b.Property<string>("IssuedBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("issued_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_certificates");
+
+                    b.HasIndex("CopyAssetId")
+                        .HasDatabaseName("ix_user_certificates_copy_asset_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_certificates_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_certificates", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserEducation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CopyAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("copy_asset_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Degree")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("degree");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<decimal>("Gpa")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("gpa");
+
+                    b.Property<int>("GpaSystem")
+                        .HasColumnType("integer")
+                        .HasColumnName("gpa_system");
+
+                    b.Property<int>("GraduationYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("graduation_year");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Specialization")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("specialization");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_education");
+
+                    b.HasIndex("CopyAssetId")
+                        .HasDatabaseName("ix_user_education_copy_asset_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_education_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_education", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserExperience", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Company")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("company");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("Current")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("current");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly>("From")
+                        .HasColumnType("date")
+                        .HasColumnName("from");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Position")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("position");
+
+                    b.Property<DateOnly?>("To")
+                        .HasColumnType("date")
+                        .HasColumnName("to");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_experiences");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_experiences_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_experiences", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserLanguageProficiency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LanguageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("language_id");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("level");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_languages");
+
+                    b.HasIndex("LanguageId")
+                        .HasDatabaseName("ix_user_languages_language_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_languages_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.HasIndex("UserId", "LanguageId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_user_languages_user_language_active")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_languages", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserProfession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("OpportunityCategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("opportunity_category_id");
+
+                    b.Property<string>("Other")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("other");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_professions");
+
+                    b.HasIndex("OpportunityCategoryId")
+                        .HasDatabaseName("ix_user_professions_opportunity_category_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_professions_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.HasIndex("UserId", "OpportunityCategoryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_user_professions_user_category_active")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_professions", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserSkill", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("level");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_skills");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_user_skills_user_id")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("user_skills", (string)null);
                 });
 
             modelBuilder.Entity("Matloob.Domain.Applications.OpportunityApplication", b =>
@@ -3101,6 +3733,90 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_opportunity_categories_opportunity_categories_parent_id");
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.BankAccount", b =>
+                {
+                    b.HasOne("Matloob.Domain.Reference.Bank", null)
+                        .WithMany()
+                        .HasForeignKey("BankId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_bank_accounts_banks_bank_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.SupportiveDocument", b =>
+                {
+                    b.HasOne("Matloob.Domain.Assets.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_supportive_documents_assets_file_asset_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.User", b =>
+                {
+                    b.HasOne("Matloob.Domain.Reference.City", null)
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_cities_city_id");
+
+                    b.HasOne("Matloob.Domain.Reference.Nationality", null)
+                        .WithMany()
+                        .HasForeignKey("NationalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_nationalities_nationality_id");
+
+                    b.HasOne("Matloob.Domain.Assets.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("PhotoAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_assets_photo_asset_id");
+
+                    b.HasOne("Matloob.Domain.Reference.Region", null)
+                        .WithMany()
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_regions_region_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserCertificate", b =>
+                {
+                    b.HasOne("Matloob.Domain.Assets.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("CopyAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_certificates_assets_copy_asset_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserEducation", b =>
+                {
+                    b.HasOne("Matloob.Domain.Assets.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("CopyAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_education_assets_copy_asset_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserLanguageProficiency", b =>
+                {
+                    b.HasOne("Matloob.Domain.Reference.Language", null)
+                        .WithMany()
+                        .HasForeignKey("LanguageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_languages_languages_language_id");
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Users.UserProfession", b =>
+                {
+                    b.HasOne("Matloob.Domain.Reference.OpportunityCategory", null)
+                        .WithMany()
+                        .HasForeignKey("OpportunityCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_professions_opportunity_categories_opportunity_categor");
                 });
 
             modelBuilder.Entity("Matloob.Domain.Reference.OpportunityCategory", b =>

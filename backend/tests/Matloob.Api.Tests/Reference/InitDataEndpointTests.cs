@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 
 namespace Matloob.Api.Tests.Reference;
 
@@ -224,7 +225,9 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
+        // The global envelope wraps the init-data object under "data"; unwrap
+        // it here so every test reads the payload's real top-level keys.
         // JsonDocument owns the buffer; Clone() to detach for the test body.
-        return doc.RootElement.Clone();
+        return doc.RootElement.DataOf().Clone();
     }
 }

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,8 +80,9 @@ public sealed class ApplyLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
         Assert.Equal("application_submitted_successfully",
-            doc.RootElement.GetProperty("message").GetString());
+            data.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -180,7 +182,7 @@ public sealed class ApplyLifecycleTests
             $"/api/v1/establishments/{_applyingEstablishment}/browse/applications");
         await using var stream = await list.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var found = doc.RootElement.EnumerateArray().Single(e =>
+        var found = doc.RootElement.DataOf().EnumerateArray().Single(e =>
             e.GetProperty("opportunity").GetProperty("id").GetGuid() == _orgOpp);
         Assert.Equal("organization", found.GetProperty("applier_type").GetString());
     }

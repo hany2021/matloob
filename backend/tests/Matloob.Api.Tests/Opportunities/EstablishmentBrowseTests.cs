@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
 
 namespace Matloob.Api.Tests.Opportunities;
@@ -77,7 +78,7 @@ public sealed class EstablishmentBrowseTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Contains(doc.RootElement.EnumerateArray(),
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("name").GetString() == "Catering opp");
     }
 
@@ -94,7 +95,7 @@ public sealed class EstablishmentBrowseTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Contains(doc.RootElement.EnumerateArray(),
+        Assert.Contains(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("name").GetString() == "QS resolved");
     }
 
@@ -112,7 +113,7 @@ public sealed class EstablishmentBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+        Assert.DoesNotContain(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("name").GetString() == "Self-created");
     }
 
@@ -128,7 +129,7 @@ public sealed class EstablishmentBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+        Assert.DoesNotContain(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("name").GetString() == "Worker job");
     }
 
@@ -156,9 +157,10 @@ public sealed class EstablishmentBrowseTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal(oppId, doc.RootElement.GetProperty("id").GetGuid());
-        Assert.True(doc.RootElement.TryGetProperty("opportunity_category", out _));
-        Assert.False(doc.RootElement.TryGetProperty("contracts_count", out _));
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(oppId, data.GetProperty("id").GetGuid());
+        Assert.True(data.TryGetProperty("opportunity_category", out _));
+        Assert.False(data.TryGetProperty("contracts_count", out _));
     }
 
     [Fact]
@@ -193,9 +195,10 @@ public sealed class EstablishmentBrowseTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.True(doc.RootElement.GetArrayLength() > 0);
+        var data = doc.RootElement.DataOf();
+        Assert.True(data.GetArrayLength() > 0);
 
-        var first = doc.RootElement.EnumerateArray().First();
+        var first = data.EnumerateArray().First();
         Assert.True(first.TryGetProperty("id", out _));
         Assert.True(first.TryGetProperty("title", out _));
         Assert.True(first.TryGetProperty("for_vacancy", out _));
@@ -204,7 +207,7 @@ public sealed class EstablishmentBrowseTests
         Assert.Equal(JsonValueKind.Array, children.ValueKind);
 
         // No top-level "Other" rows.
-        Assert.DoesNotContain(doc.RootElement.EnumerateArray(),
+        Assert.DoesNotContain(data.EnumerateArray(),
             e => e.GetProperty("is_other").GetBoolean());
     }
 }

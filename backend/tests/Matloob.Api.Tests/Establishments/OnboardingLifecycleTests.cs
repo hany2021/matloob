@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Auth;
+using Matloob.Api.Tests.Common;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -267,7 +268,7 @@ public sealed class OnboardingLifecycleTests : IClassFixture<EstablishmentsApiFa
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        var items = doc.RootElement.GetProperty("items").EnumerateArray()
+        var items = doc.RootElement.DataOf().GetProperty("items").EnumerateArray()
             .Select(e => e.GetProperty("id").GetGuid())
             .ToList();
         Assert.Contains(id, items);

@@ -21,6 +21,35 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.Name).HasMaxLength(200);
         builder.Property(x => x.Phone).HasMaxLength(30);
         builder.Property(x => x.IsActive).HasDefaultValue(true);
+        builder.Property(x => x.Onboarded).HasDefaultValue(false);
+
+        // ---- Personal-info profile columns ----
+        builder.Property(x => x.IdNumber).HasMaxLength(20);
+        builder.Property(x => x.Gender)
+            .HasConversion(UserProfileConverters.Gender!)
+            .HasMaxLength(16);
+        builder.Property(x => x.Bio).HasMaxLength(250);
+        builder.Property(x => x.AdditionalPhone).HasMaxLength(30);
+        builder.Property(x => x.YearsOfExperience).HasDefaultValue(0);
+        builder.Property(x => x.ProfileCompleted).HasDefaultValue(false);
+
+        // Reference FKs — Restrict so deleting a lookup row can't orphan users.
+        builder.HasOne<Domain.Reference.City>()
+            .WithMany()
+            .HasForeignKey(x => x.CityId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Domain.Reference.Region>()
+            .WithMany()
+            .HasForeignKey(x => x.RegionId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Domain.Reference.Nationality>()
+            .WithMany()
+            .HasForeignKey(x => x.NationalityId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Domain.Assets.Asset>()
+            .WithMany()
+            .HasForeignKey(x => x.PhotoAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Partial unique on IdentityId across non-soft-deleted rows. The
         // sync service's lookup (by sub claim) is the hot path.
