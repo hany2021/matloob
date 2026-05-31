@@ -114,7 +114,10 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 
 ## 6. CURRENT STATE & NEXT STEPS (read this first)
 
-**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~37 commits, each a clean phase. **Full test suite: 449/449 green.** Run `git log --oneline` for the slice history. Dev Postgres was offline this session — migrations auto-apply on next API start (`Database:AutoMigrate=true` in Dev).
+**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~39 commits, each a clean phase. **Full test suite: 454/454 green.** Run `git log --oneline` for the slice history. Dev Postgres was offline this session — migrations auto-apply on next API start (`Database:AutoMigrate=true` in Dev).
+
+### Done — `GET establishments/events/{id}/drafted` (open draft in the wizard form)
+The frontend's `getEventForm` read. Mirrors Laravel `ShowDraftedEventController`/`DraftedEventResource`: progressive payload emitting `step_one`..`step_four` up to `steps_done` (cumulative 1..4 band) + `steps_done` + `opportunities`. `step_two.uploads` via `MediaSupport`; `ResolveForRead` (404 if not theirs). Step-three success criteria + step-four nested opportunities are unbacked → empty arrays; steps not yet reached are omitted (`JsonIgnore WhenWritingNull`). `GetDraftedEventEndpoint.cs`; 5 tests in `EventsTests.cs`.
 
 ### Done — establishment profile editing slice (all 5 endpoints, committed + tested)
 The 5 `PATCH establishments/me/profile/*` endpoints the frontend called but the API lacked. Every frontend mutator ignores the response body and refetches `GET me/profile`, so each returns the full refreshed profile (`DataEnvelope<EstablishmentMeProfileResponse>`) via the new shared **`EstablishmentProfileReadMapper`**; precognition requests short-circuit to 204; all resolve via `EstablishmentResourceGuards.ResolveForWrite` (active member/admin, 423 while Suspended).
@@ -142,11 +145,10 @@ The 5 `PATCH establishments/me/profile/*` endpoints the frontend called but the 
 Cross-referenced every Next.js call vs. implemented routes. Almost everything is covered. Outstanding, in priority order:
 
 1. **Establishment experience STORE — `POST establishments/me/profile/experience`** (the "Add experience" dialog, `AddExperienceDialog.tsx`). NOT part of the 5-endpoint profile-edit slice (which was the PATCH years-of-experience). Needs a whole new backing: an `EstablishmentExperience` table + a polymorphic `category` FK (event-type OR opportunity-category by `type`), and projecting the `experiences[]` array in me/profile (currently `[]`). Old Laravel had `StoreProfileExperienceController` + `EstablishmentExperienceResource`. Frontend uses laravel-precognition. **Scope decision pending** (defer vs build) — was raised, not yet answered.
-2. **`GET establishments/events/{id}/drafted`** — "open event in editable form" read; not implemented.
-3. **Opportunity & event success-criteria** — `SuccessManagementCriterion` is opportunity-bound and **no write path creates criteria at all** (tables exist, read returns `[]`). Building it = the whole criteria feature (create + uploads via `success_management_criterion_assets`); event criteria additionally need an Event split-FK on the criterion.
-4. **Event step-4 nested opportunities** — wizard step accepted but not persisted.
-5. **Missing notification events** — emit `offer-is-active`, `opportunity fulfilled/expired`, `event started/ended` outbox events so their (already-designed) legacy notifications fire.
-6. **Verify, likely dead:** `PATCH/DELETE evaluations/{id}` (backend is create/read only — confirm the frontend actually edits/deletes evals); `POST/PATCH/DELETE users/opportunities` (users don't author opportunities — almost certainly dead route constants).
+2. **Opportunity & event success-criteria** — `SuccessManagementCriterion` is opportunity-bound and **no write path creates criteria at all** (tables exist, read returns `[]`). Building it = the whole criteria feature (create + uploads via `success_management_criterion_assets`); event criteria additionally need an Event split-FK on the criterion. (Also unblocks `step_three.success_criteria` in the drafted-event read, currently `[]`.)
+3. **Event step-4 nested opportunities** — wizard step accepted but not persisted. (Also unblocks `opportunities[]` in the drafted-event read, currently `[]`.)
+4. **Missing notification events** — emit `offer-is-active`, `opportunity fulfilled/expired`, `event started/ended` outbox events so their (already-designed) legacy notifications fire.
+5. **Verify, likely dead:** `PATCH/DELETE evaluations/{id}` (backend is create/read only — confirm the frontend actually edits/deletes evals); `POST/PATCH/DELETE users/opportunities` (users don't author opportunities — almost certainly dead route constants).
 
 ### Not gaps
 - **Intentionally dropped** (Qiwa/Ajeer/billing): `establishments/invoices` (+`/{id}`,`/issue`), `contracts-regulations`, `offers/pending-invoice`, `offers/ajeer/check-eligibility`.
