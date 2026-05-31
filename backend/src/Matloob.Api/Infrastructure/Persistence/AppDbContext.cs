@@ -58,6 +58,11 @@ public sealed class AppDbContext : DbContext
     public DbSet<Service> Services => Set<Service>();
     public DbSet<Product> Products => Set<Product>();
 
+    // Establishment events + their opportunity-category pivot.
+    public DbSet<Event> Events => Set<Event>();
+    public DbSet<EventOpportunityCategory> EventOpportunityCategories
+        => Set<EventOpportunityCategory>();
+
     // Append-only audit. Not soft-deletable -- inherits BaseEntity, not BaseAuditableEntity.
     public DbSet<EstablishmentReviewHistory> EstablishmentReviewHistory => Set<EstablishmentReviewHistory>();
 
