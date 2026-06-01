@@ -10,6 +10,7 @@ using Matloob.Domain.Assets;
 using Matloob.Domain.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace Matloob.Api.Features.Profile.UpdateInterest;
 
@@ -43,11 +44,13 @@ public sealed class UpdateInterestEndpoint : EndpointWithoutRequest
         Verbs(Http.POST, Http.PATCH);
         Routes("/api/users/profile/interest", "/api/v1/users/profile/interest");
         Policies(MatloobPolicies.User);
-        AllowFileUploads();
+        // AllowFileUploads omitted — see UpdateEducationEndpoint for why
+        // (precognition pre-validation arrives as JSON without files).
         Description(b => b
             .Produces<DataEnvelope<ProfileResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .WithTags("Profile"));
         Summary(s => s.Summary = "Sync professions and upsert supportive documents.");
@@ -55,9 +58,29 @@ public sealed class UpdateInterestEndpoint : EndpointWithoutRequest
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var form = await HttpContext.Request.ReadFormAsync(ct);
-        var professionItems = MultipartArrayParser.Parse(form, "professions");
-        var docItems = MultipartArrayParser.Parse(form, "supportive_documents");
+        IReadOnlyList<MultipartArrayParser.Item> professionItems;
+        IReadOnlyList<MultipartArrayParser.Item> docItems;
+        if (HttpContext.Request.HasFormContentType)
+        {
+            var form = await HttpContext.Request.ReadFormAsync(ct);
+            professionItems = MultipartArrayParser.Parse(form, "professions");
+            docItems = MultipartArrayParser.Parse(form, "supportive_documents");
+        }
+        else if (HttpContext.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            professionItems = await MultipartArrayParser.ParseJsonAsync(HttpContext, "professions", ct);
+            docItems = await MultipartArrayParser.ParseJsonAsync(HttpContext, "supportive_documents", ct);
+        }
+        else
+        {
+            await Send.ResponseAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status415UnsupportedMediaType,
+                Title = "Unsupported Media Type",
+                Detail = "Expected multipart/form-data or application/json.",
+            }, StatusCodes.Status415UnsupportedMediaType, ct);
+            return;
+        }
 
         if (professionItems.Count is 0 or > 100)
             AddError("professions", "Between 1 and 100 professions are required.");

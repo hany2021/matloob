@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Matloob.Api.Features.Common;
 
 namespace Matloob.Api.Features.Reference.InitData;
 
@@ -100,8 +101,15 @@ public sealed record LanguagesWrapperDto(
 /// <summary>
 /// Top-level init-data response. 17 keys, in the same order Laravel emitted
 /// them.
+///
+/// Marked <see cref="IBypassEnvelope"/> so the global ResponseEnvelopeShim
+/// does NOT wrap it in <c>{ data: { ... } }</c>. The legacy Laravel
+/// endpoint returned a flat object (controllers built it via
+/// <c>response()->json([...])</c>, never APIResource), and the public
+/// frontend's <c>useInitData</c> hook reads <c>initData.cities</c>
+/// directly — wrapping it breaks every dropdown that consumes a lookup.
 /// </summary>
-public sealed class InitDataResponse
+public sealed class InitDataResponse : IBypassEnvelope
 {
     [JsonPropertyName("translations")]
     public IReadOnlyDictionary<string, string> Translations { get; init; } = new Dictionary<string, string>();
