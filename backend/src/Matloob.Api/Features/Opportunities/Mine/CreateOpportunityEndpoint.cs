@@ -1,13 +1,18 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using FastEndpoints;
 using FluentValidation;
+using FluentValidation.Results;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Features.Establishments.Events.Common;
 using Matloob.Api.Features.Opportunities.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Opportunities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Opportunities.Mine;
@@ -71,23 +76,26 @@ namespace Matloob.Api.Features.Opportunities.Mine;
 /// </para>
 /// </summary>
 public sealed class CreateOpportunityEndpoint
-    : Endpoint<CreateOpportunityRequest>
+    : EndpointWithoutRequest
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly TimeProvider _clock;
     private readonly IOutboxWriter _outbox;
+    private readonly IFileStorage _storage;
 
     public CreateOpportunityEndpoint(
         AppDbContext db,
         ICurrentUser currentUser,
         TimeProvider clock,
-        IOutboxWriter outbox)
+        IOutboxWriter outbox,
+        IFileStorage storage)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _outbox = outbox;
+        _storage = storage;
     }
 
     public override void Configure()
@@ -96,6 +104,11 @@ public sealed class CreateOpportunityEndpoint
             "/api/establishments/me/opportunities",
             "/api/v1/establishments/{establishmentId}/opportunities");
         Policies(MatloobPolicies.User);
+        // AllowFileUploads() intentionally NOT called: it restricts the endpoint
+        // to multipart/form-data and 415s JSON. This endpoint must accept BOTH
+        // the JSON shapes (canonical single + legacy bulk, + precognition pings)
+        // AND the multipart submission (criteria + uploads). HandleAsync branches
+        // on Content-Type and reads each accordingly.
         Description(b => b
             .Produces<OpportunityResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -110,13 +123,47 @@ public sealed class CreateOpportunityEndpoint
         });
     }
 
-    public override async Task HandleAsync(CreateOpportunityRequest req, CancellationToken ct)
+    public override async Task HandleAsync(CancellationToken ct)
     {
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(
             _db, HttpContext, _currentUser.UserId, ct);
         if (establishmentId is null) return;
 
         var now = _clock.GetUtcNow();
+
+        // -- multipart shape (frontend "add opportunity to existing event" page:
+        //    event_uuid + nested opportunities[i][...] + per-item criteria/uploads).
+        //    Mirrors the event-wizard step-4 parser, but ADDS to the event rather
+        //    than replacing its opportunities. ------------------------------------
+        if (HttpContext.Request.HasFormContentType)
+        {
+            await HandleMultipartAsync(establishmentId.Value, now, ct);
+            return;
+        }
+
+        // -- JSON shapes (canonical single + legacy bulk) -------------------
+        CreateOpportunityRequest req;
+        try
+        {
+            req = await HttpContext.Request.ReadFromJsonAsync<CreateOpportunityRequest>(ct)
+                  ?? new CreateOpportunityRequest();
+        }
+        catch (JsonException)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext, StatusCodes.Status400BadRequest,
+                "invalid_json", "Request body is not valid JSON.", ct);
+            return;
+        }
+
+        // Precognition pings (the file form validates as JSON, no files yet)
+        // land here — never create on a ping.
+        if (EventWriteSupport.IsPrecognitive(HttpContext))
+        {
+            await Send.NoContentAsync(ct);
+            return;
+        }
+
         var sharedEventId = req.ResolvedEventId();
 
         // -- bulk shape -----------------------------------------------------
@@ -331,6 +378,81 @@ public sealed class CreateOpportunityEndpoint
         HttpContext.Response.Headers.Location =
             $"/api/v1/establishments/{establishmentId.Value}/opportunities/{opportunity.Id}";
         await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
+    }
+
+    /// <summary>
+    /// Multipart path: parse + validate the nested <c>opportunities[]</c> (with
+    /// per-item criteria + uploads) the same way the event wizard does, confirm
+    /// the <c>event_uuid</c> belongs to the resolved establishment, then ADD the
+    /// opportunities to that event (no replace). Precognition pre-validation
+    /// stops at 204.
+    /// </summary>
+    private async Task HandleMultipartAsync(Guid establishmentId, DateTimeOffset now, CancellationToken ct)
+    {
+        var form = await HttpContext.Request.ReadFormAsync(ct);
+
+        var eventRaw = form["event_uuid"].ToString();
+        if (string.IsNullOrWhiteSpace(eventRaw)) eventRaw = form["event_id"].ToString();
+        Guid.TryParse(eventRaw, out var eventId);
+
+        var items = EventOpportunitiesSupport.Parse(form);
+
+        var errors = new List<(string, string)>();
+        if (eventId == Guid.Empty)
+            errors.Add(("event_uuid", "A valid event is required."));
+        if (items.Count == 0)
+            errors.Add(("opportunities", "At least one opportunity is required."));
+        await EventOpportunitiesSupport.ValidateAsync(_db, items, errors, ct);
+
+        // The event must exist AND belong to the resolved establishment (legacy
+        // ValidEventForOpportunity). Only check when the id parsed.
+        if (eventId != Guid.Empty
+            && !await _db.Events.AnyAsync(e => e.Id == eventId && e.EstablishmentId == establishmentId, ct))
+        {
+            errors.Add(("event_uuid", "Event not found."));
+        }
+
+        if (errors.Count > 0)
+        {
+            foreach (var (field, message) in errors)
+                ValidationFailures.Add(new ValidationFailure(field, message));
+            await Send.ErrorsAsync(StatusCodes.Status422UnprocessableEntity, ct);
+            return;
+        }
+
+        if (EventWriteSupport.IsPrecognitive(HttpContext))
+        {
+            await Send.NoContentAsync(ct);
+            return;
+        }
+
+        var created = await EventOpportunitiesSupport.AddAsync(
+            _db, _storage, eventId, items, establishmentId, _currentUser.UserId, now, ct);
+
+        foreach (var opp in created)
+        {
+            _outbox.Enqueue(
+                OpportunityEventTypes.Created,
+                aggregateType: nameof(Opportunity),
+                aggregateId: opp.Id,
+                payload: new
+                {
+                    id = opp.Id,
+                    issuerEstablishmentId = opp.IssuerEstablishmentId,
+                    eventId = opp.EventId,
+                    opportunityCategoryId = opp.OpportunityCategoryId,
+                    status = opp.Status.ToString(),
+                    createdAt = now,
+                    createdByUserId = _currentUser.UserId,
+                });
+        }
+        _outbox.Flush();
+        await _db.SaveChangesAsync(ct);
+
+        var responses = new List<OpportunityResponse>(created.Count);
+        foreach (var opp in created)
+            responses.Add(await BuildResponseAsync(opp, establishmentId, ct));
+        await Send.ResponseAsync(responses, StatusCodes.Status201Created, ct);
     }
 
     private async Task<OpportunityResponse> BuildResponseAsync(

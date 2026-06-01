@@ -125,17 +125,31 @@ internal static partial class EventOpportunitiesSupport
         }
     }
 
-    /// <summary>Replace the event's opportunities with the parsed set.</summary>
+    /// <summary>Replace the event's opportunities with the parsed set (wizard step-4).</summary>
     public static async Task ReplaceAsync(
         AppDbContext db, IFileStorage storage, Event @event, IReadOnlyList<OpportunityInput> items,
         Guid establishmentId, string? uploadedByUserId, DateTimeOffset now, CancellationToken ct)
     {
         await DeleteExistingAsync(db, @event.Id, ct);
+        await AddAsync(db, storage, @event.Id, items, establishmentId, uploadedByUserId, now, ct);
+    }
 
+    /// <summary>
+    /// Create the parsed opportunities under <paramref name="eventId"/> WITHOUT
+    /// removing any existing ones — the standalone "add opportunities to an
+    /// existing event" path (legacy <c>OpportunityService::store</c>). Returns
+    /// the created aggregates so the caller can emit per-opportunity events.
+    /// </summary>
+    public static async Task<List<Opportunity>> AddAsync(
+        AppDbContext db, IFileStorage storage, Guid eventId, IReadOnlyList<OpportunityInput> items,
+        Guid establishmentId, string? uploadedByUserId, DateTimeOffset now, CancellationToken ct)
+    {
         // Event's current category pivot — attach any newly-referenced categories.
         var eventCategoryIds = (await db.EventOpportunityCategories
-            .Where(p => p.EventId == @event.Id).Select(p => p.OpportunityCategoryId).ToListAsync(ct))
+            .Where(p => p.EventId == eventId).Select(p => p.OpportunityCategoryId).ToListAsync(ct))
             .ToHashSet();
+
+        var created = new List<Opportunity>(items.Count);
 
         foreach (var input in items)
         {
@@ -147,7 +161,7 @@ internal static partial class EventOpportunitiesSupport
 
             var opportunity = OpportunityBuildSupport.Build(
                 establishmentId,
-                @event.Id,
+                eventId,
                 categoryId,
                 input.Field("name"),
                 input.Field("description"),
@@ -172,9 +186,10 @@ internal static partial class EventOpportunitiesSupport
                 input.Genders.Count > 0 ? input.Genders : null);
 
             db.Opportunities.Add(opportunity);
+            created.Add(opportunity);
 
             if (eventCategoryIds.Add(categoryId))
-                db.EventOpportunityCategories.Add(new EventOpportunityCategory(@event.Id, categoryId));
+                db.EventOpportunityCategories.Add(new EventOpportunityCategory(eventId, categoryId));
 
             foreach (var file in input.Files)
             {
@@ -189,6 +204,8 @@ internal static partial class EventOpportunitiesSupport
                 await SuccessCriteriaSupport.AddForOpportunityAsync(
                     db, storage, opportunity.Id, input.Criteria, uploadedByUserId, now, ct);
         }
+
+        return created;
     }
 
     private static async Task DeleteExistingAsync(AppDbContext db, Guid eventId, CancellationToken ct)
