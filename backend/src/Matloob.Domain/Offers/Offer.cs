@@ -259,6 +259,24 @@ public sealed class Offer : BaseAuditableEntity<Guid>, IAggregateRoot
     }
 
     /// <summary>
+    /// Time-driven transition (status sync): an Accepted offer whose job
+    /// period (<see cref="EndDate"/>) has finished moves to
+    /// <see cref="OfferStatus.WaitingForEvaluation"/> — the state the
+    /// evaluation endpoints require before either party can evaluate. This is
+    /// the legacy <c>SyncOffersStatuses</c> <c>isFinished()</c> branch and is
+    /// what lets evaluations begin without a manual action.
+    /// </summary>
+    public void MarkWaitingForEvaluation()
+    {
+        if (Status != OfferStatus.Accepted)
+        {
+            throw new InvalidOperationException(
+                $"Cannot move to WaitingForEvaluation from status {Status}; only Accepted qualifies.");
+        }
+        Status = OfferStatus.WaitingForEvaluation;
+    }
+
+    /// <summary>
     /// Move from <see cref="OfferStatus.WaitingForEvaluation"/> to
     /// <see cref="OfferStatus.Completed"/> once both parties have
     /// evaluated each other. Caller is responsible for verifying the

@@ -120,6 +120,37 @@ public sealed class Event : BaseAuditableEntity<Guid>, IAggregateRoot
         EndDate = today;
     }
 
+    /// <summary>
+    /// Time-driven transition (status sync): an Upcoming event whose start
+    /// date has arrived becomes Active. Distinct from <see cref="Publish"/>,
+    /// which is the action-driven publish.
+    /// </summary>
+    public void MarkStarted()
+    {
+        if (Status != EventStatus.Upcoming)
+        {
+            throw new InvalidOperationException(
+                $"Cannot mark started from status {Status}; only Upcoming is startable.");
+        }
+        Status = EventStatus.Active;
+    }
+
+    /// <summary>
+    /// Time-driven transition (status sync): an Active event whose
+    /// <see cref="EndDate"/> has passed becomes <see cref="EventStatus.Finished"/>.
+    /// Unlike <see cref="End"/> (the manual "end now" action) this does NOT
+    /// rewrite <see cref="EndDate"/> — the planned end date is preserved.
+    /// </summary>
+    public void MarkFinished()
+    {
+        if (Status != EventStatus.Active)
+        {
+            throw new InvalidOperationException(
+                $"Cannot mark finished from status {Status}; only Active is finishable.");
+        }
+        Status = EventStatus.Finished;
+    }
+
     private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -6,6 +6,7 @@ using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Persistence.Seed;
+using Matloob.Api.Infrastructure.StatusSync;
 using Matloob.Api.Infrastructure.Storage;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -71,6 +72,10 @@ try
     // Transactional outbox for domain events. Writer is request-scoped;
     // dispatcher background service runs only when Outbox:DispatcherEnabled.
     builder.Services.AddMatloobOutbox(builder.Configuration);
+
+    // Time-driven status sync (events/opportunities/offers advance by date).
+    // Background sweep runs only when StatusSync:Enabled=true.
+    builder.Services.AddMatloobStatusSync(builder.Configuration);
 
     // Outbound SMS port. No real provider yet (Q-NOTIF-TRANSPORT) — the
     // no-op keeps the notification fanout's sms channel wired.

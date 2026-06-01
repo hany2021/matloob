@@ -246,4 +246,34 @@ public sealed class Opportunity : BaseAuditableEntity<Guid>, IAggregateRoot
         EndedAt = at;
         EndedByUserId = endedByUserId;
     }
+
+    /// <summary>
+    /// Time-driven transition (status sync): an Upcoming opportunity whose
+    /// <see cref="StartDate"/> has arrived becomes Active.
+    /// </summary>
+    public void MarkStarted()
+    {
+        if (Status != OpportunityStatus.Upcoming)
+        {
+            throw new InvalidOperationException(
+                $"Cannot mark started from status {Status}; only Upcoming is startable.");
+        }
+        Status = OpportunityStatus.Active;
+    }
+
+    /// <summary>
+    /// Time-driven transition (status sync): an Upcoming/Active opportunity
+    /// whose <see cref="EndDate"/> has passed without a manual End becomes
+    /// <see cref="OpportunityStatus.Finished"/> (the derived/eventual state,
+    /// distinct from the manual <see cref="End"/> → Ended).
+    /// </summary>
+    public void MarkFinished()
+    {
+        if (Status != OpportunityStatus.Upcoming && Status != OpportunityStatus.Active)
+        {
+            throw new InvalidOperationException(
+                $"Cannot mark finished from status {Status}; only Upcoming/Active is finishable.");
+        }
+        Status = OpportunityStatus.Finished;
+    }
 }
