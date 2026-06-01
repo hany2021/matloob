@@ -10,6 +10,7 @@ using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace Matloob.Api.Features.Profile.UpdateEducation;
 
@@ -43,11 +44,16 @@ public sealed class UpdateEducationEndpoint : EndpointWithoutRequest
         Verbs(Http.POST, Http.PATCH);
         Routes("/api/users/profile/user-education", "/api/v1/users/profile/user-education");
         Policies(MatloobPolicies.User);
-        AllowFileUploads();
+        // AllowFileUploads() intentionally NOT called: it would restrict the
+        // endpoint to multipart/form-data only and 415 every JSON request,
+        // including the laravel-precognition pre-validation pings the public
+        // frontend sends while the user types (no file attached yet). The
+        // handler checks Content-Type below and reads accordingly.
         Description(b => b
             .Produces<DataEnvelope<ProfileResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .WithTags("Profile"));
         Summary(s => s.Summary = "Upsert the current user's education entries.");
@@ -55,8 +61,28 @@ public sealed class UpdateEducationEndpoint : EndpointWithoutRequest
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var form = await HttpContext.Request.ReadFormAsync(ct);
-        var items = MultipartArrayParser.Parse(form, "education");
+        // multipart for real submissions (includes file uploads), JSON for
+        // precognition pre-validation (no files, structure-only validation).
+        IReadOnlyList<MultipartArrayParser.Item> items;
+        if (HttpContext.Request.HasFormContentType)
+        {
+            var form = await HttpContext.Request.ReadFormAsync(ct);
+            items = MultipartArrayParser.Parse(form, "education");
+        }
+        else if (HttpContext.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            items = await MultipartArrayParser.ParseJsonAsync(HttpContext, "education", ct);
+        }
+        else
+        {
+            await Send.ResponseAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status415UnsupportedMediaType,
+                Title = "Unsupported Media Type",
+                Detail = "Expected multipart/form-data or application/json.",
+            }, StatusCodes.Status415UnsupportedMediaType, ct);
+            return;
+        }
         var currentYear = DateTime.UtcNow.Year;
 
         // ---- validate ----
