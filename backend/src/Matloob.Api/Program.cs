@@ -120,7 +120,12 @@ try
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials()
-                .WithExposedHeaders("Content-Disposition"));
+                // Content-Disposition for downloads; the Precognition pair must be
+                // exposed so the browser lets laravel-precognition READ them
+                // cross-origin (it sets them in middleware, but CORS gates whether
+                // JS can see them — otherwise "Did not receive a Precognition
+                // response" is thrown even on a valid 422/204).
+                .WithExposedHeaders("Content-Disposition", "Precognition", "Precognition-Success"));
         });
     }
 
