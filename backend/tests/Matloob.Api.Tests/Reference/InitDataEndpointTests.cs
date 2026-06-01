@@ -225,9 +225,10 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        // The global envelope wraps the init-data object under "data"; unwrap
-        // it here so every test reads the payload's real top-level keys.
-        // JsonDocument owns the buffer; Clone() to detach for the test body.
-        return doc.RootElement.DataOf().Clone();
+        // init-data opts out of the global { data } envelope (InitDataResponse :
+        // IBypassEnvelope) — the frontend reads it un-wrapped — so the payload's
+        // real top-level keys live at the root. JsonDocument owns the buffer;
+        // Clone() to detach for the test body.
+        return doc.RootElement.Clone();
     }
 }
