@@ -10,6 +10,7 @@ using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
+using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace Matloob.Api.Features.Profile.UpdateCertificates;
 
@@ -38,11 +39,14 @@ public sealed class UpdateCertificatesEndpoint : EndpointWithoutRequest
         Verbs(Http.POST, Http.PATCH);
         Routes("/api/users/profile/user-certificates", "/api/v1/users/profile/user-certificates");
         Policies(MatloobPolicies.User);
-        AllowFileUploads();
+        // See UpdateEducationEndpoint for the rationale on not calling
+        // AllowFileUploads — short version: precognition pre-validation
+        // arrives as JSON without a file and must not 415.
         Description(b => b
             .Produces<DataEnvelope<ProfileResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .WithTags("Profile"));
         Summary(s => s.Summary = "Upsert the current user's certificates.");
@@ -50,8 +54,26 @@ public sealed class UpdateCertificatesEndpoint : EndpointWithoutRequest
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var form = await HttpContext.Request.ReadFormAsync(ct);
-        var items = MultipartArrayParser.Parse(form, "certificates");
+        IReadOnlyList<MultipartArrayParser.Item> items;
+        if (HttpContext.Request.HasFormContentType)
+        {
+            var form = await HttpContext.Request.ReadFormAsync(ct);
+            items = MultipartArrayParser.Parse(form, "certificates");
+        }
+        else if (HttpContext.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            items = await MultipartArrayParser.ParseJsonAsync(HttpContext, "certificates", ct);
+        }
+        else
+        {
+            await Send.ResponseAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status415UnsupportedMediaType,
+                Title = "Unsupported Media Type",
+                Detail = "Expected multipart/form-data or application/json.",
+            }, StatusCodes.Status415UnsupportedMediaType, ct);
+            return;
+        }
 
         for (var i = 0; i < items.Count; i++)
         {

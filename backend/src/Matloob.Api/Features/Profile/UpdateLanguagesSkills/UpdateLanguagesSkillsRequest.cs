@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Matloob.Api.Features.Common;
 
 namespace Matloob.Api.Features.Profile.UpdateLanguagesSkills;
 
@@ -19,6 +20,7 @@ public sealed class UpdateLanguagesSkillsRequest
 public sealed class SkillItem
 {
     [JsonPropertyName("id")]
+    [JsonConverter(typeof(NullableGuidJsonConverter))]
     public Guid? Id { get; init; }
 
     [JsonPropertyName("name")]
@@ -33,6 +35,7 @@ public sealed class LanguageItem
 {
     /// <summary>Reference language id (must exist in the languages table).</summary>
     [JsonPropertyName("id")]
+    [JsonConverter(typeof(NullableGuidJsonConverter))]
     public Guid? Id { get; init; }
 
     /// <summary>One of: beginner, intermediate, expert.</summary>

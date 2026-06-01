@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 
@@ -64,5 +65,59 @@ public static partial class MultipartArrayParser
         }
 
         return byIndex.Values.ToList();
+    }
+
+    /// <summary>
+    /// JSON counterpart of <see cref="Parse"/> for precognition pre-validation
+    /// requests that arrive without files. Expects a body shaped like
+    /// <c>{ "education": [ { "degree": "...", "gpa_system": 4, ... }, ... ] }</c>.
+    /// Files are absent (precognition never carries the binary), so the
+    /// returned items have <see cref="Item.Files"/> empty — the handler skips
+    /// the file-format / size checks for that branch on its own.
+    /// </summary>
+    public static async Task<IReadOnlyList<Item>> ParseJsonAsync(
+        HttpContext ctx, string arrayKey, CancellationToken ct)
+    {
+        // Allow seeking so subsequent middleware (or logging) can re-read.
+        ctx.Request.EnableBuffering();
+        ctx.Request.Body.Position = 0;
+        using var doc = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ct);
+        ctx.Request.Body.Position = 0;
+
+        if (doc.RootElement.ValueKind != JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty(arrayKey, out var arr)
+            || arr.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<Item>();
+        }
+
+        var items = new List<Item>(arr.GetArrayLength());
+        foreach (var el in arr.EnumerateArray())
+        {
+            var item = new Item();
+            if (el.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in el.EnumerateObject())
+                {
+                    // Skip null + objects + arrays: only flat scalar fields
+                    // map onto Fields. Files would have been multipart; we
+                    // intentionally never set Files here.
+                    var value = prop.Value.ValueKind switch
+                    {
+                        JsonValueKind.String => prop.Value.GetString(),
+                        JsonValueKind.Number => prop.Value.GetRawText(),
+                        JsonValueKind.True => "true",
+                        JsonValueKind.False => "false",
+                        _ => null,
+                    };
+                    if (value is not null)
+                    {
+                        item.Fields[prop.Name] = value;
+                    }
+                }
+            }
+            items.Add(item);
+        }
+        return items;
     }
 }

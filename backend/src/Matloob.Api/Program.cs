@@ -179,6 +179,48 @@ try
         app.UseCors();
     }
 
+    // Laravel Precognition handshake. The public frontend uses
+    // laravel-precognition-axios, which requires every response to a
+    // request carrying `Precognition: true` to echo that header back
+    // (and add `Precognition-Success: true` when the response is a
+    // success status). Otherwise the client throws "Did not receive a
+    // Precognition response" even when the body is a perfectly valid
+    // 422 / 204.
+    //
+    // We do this in middleware so it covers BOTH paths:
+    //   (a) the endpoint handler short-circuited with 204 NoContent
+    //       after FastEndpoints ran the validator (ProfileMutationSupport
+    //       .IsPrecognitive),
+    //   (b) the FastEndpoints built-in 422 path triggered by validation
+    //       failure that never reaches the handler.
+    //
+    // Registered AFTER UseRouting + UseCors so OPTIONS preflight isn't
+    // tagged, and BEFORE authentication so the auth challenge response
+    // still gets the header (the client treats 401 the same as 4xx).
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Headers.ContainsKey("Precognition"))
+        {
+            // Set the marker header BEFORE calling the next middleware so
+            // it survives every response-writer code path (FastEndpoints'
+            // Errors.ResponseBuilder for 422s, JwtBearer's challenge for
+            // 401s, the global ExceptionHandler for 5xxs). Using
+            // OnStarting alone proved unreliable for the
+            // Errors.ResponseBuilder path. The Success bit can still be
+            // computed at flush time because it depends on the final status.
+            ctx.Response.Headers["Precognition"] = "true";
+            ctx.Response.OnStarting(() =>
+            {
+                if (ctx.Response.StatusCode is >= 200 and < 300)
+                {
+                    ctx.Response.Headers["Precognition-Success"] = "true";
+                }
+                return Task.CompletedTask;
+            });
+        }
+        await next();
+    });
+
     // Authentication / authorization run BEFORE the endpoint-routing terminal
     // middleware. No endpoint currently requires either, so anonymous traffic
     // still reaches every route. Endpoint-level policies arrive in the next commit.
@@ -199,6 +241,19 @@ try
     app.UseFastEndpoints(c =>
     {
         var jsonOptions = c.Serializer.Options;
+
+        // Tolerant nullable-Guid binding: the public frontend's
+        // laravel-precognition forms emit "" for not-yet-saved entries
+        // (e.g. a free-text skill the user just typed in). System.Text.Json
+        // refuses to bind "" to a Guid? and returns 400 BadRequest before
+        // the validator can produce a per-field error. Registering the
+        // converter globally lets every Guid? property accept "" as null,
+        // matching the Laravel parser the legacy backend ran on.
+        if (!jsonOptions.Converters.Any(c => c is Matloob.Api.Features.Common.NullableGuidJsonConverter))
+        {
+            jsonOptions.Converters.Add(new Matloob.Api.Features.Common.NullableGuidJsonConverter());
+        }
+
         c.Serializer.ResponseSerializer = (rsp, dto, contentType, jsonCtx, ct) =>
         {
             var payload = ResponseEnvelopeShim.Wrap(rsp.HttpContext, dto);
