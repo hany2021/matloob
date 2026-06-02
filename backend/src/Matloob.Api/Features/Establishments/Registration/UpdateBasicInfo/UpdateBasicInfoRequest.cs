@@ -42,4 +42,10 @@ public sealed class UpdateBasicInfoRequest
     public int? YearsOfExperience { get; init; }
     public string? EstablishmentSize { get; init; }
     public string? AdditionalContactNumber { get; init; }
+
+    // Registration type: "منظم" (organizer) maps onto the existing
+    // CanManageEvents capability. null = leave unchanged (PATCH semantics);
+    // true/false set it explicitly. "مشغل" is the default for every
+    // establishment, so it needs no field of its own.
+    public bool? CanManageEvents { get; init; }
 }

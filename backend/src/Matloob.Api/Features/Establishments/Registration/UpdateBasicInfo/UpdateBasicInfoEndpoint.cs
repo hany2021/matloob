@@ -116,7 +116,8 @@ public sealed class UpdateBasicInfoEndpoint : Endpoint<UpdateBasicInfoRequest, U
             website: ChangeIfPresent(req.Website),
             yearsOfExperience: ChangeIfPresent(req.YearsOfExperience),
             establishmentSize: ChangeIfPresent(req.EstablishmentSize),
-            additionalContactNumber: ChangeIfPresent(req.AdditionalContactNumber));
+            additionalContactNumber: ChangeIfPresent(req.AdditionalContactNumber),
+            canManageEvents: ChangeIfPresent(req.CanManageEvents));
 
         await _db.SaveChangesAsync(ct);
 

@@ -172,7 +172,8 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
         FieldChange<string?> website = default,
         FieldChange<int?> yearsOfExperience = default,
         FieldChange<string?> establishmentSize = default,
-        FieldChange<string?> additionalContactNumber = default)
+        FieldChange<string?> additionalContactNumber = default,
+        FieldChange<bool?> canManageEvents = default)
     {
         if (!IsEditableByCreator)
         {
@@ -205,6 +206,15 @@ public sealed class Establishment : BaseAuditableEntity<Guid>, IAggregateRoot
         if (yearsOfExperience.IsSet) YearsOfExperience = yearsOfExperience.Value;
         if (establishmentSize.IsSet) EstablishmentSize = NormalizeOptional(establishmentSize.Value);
         if (additionalContactNumber.IsSet) AdditionalContactNumber = NormalizeOptional(additionalContactNumber.Value);
+
+        // Registration "type" reuse: the public frontend models نوع التسجيل as a
+        // single "منظم" (organizer) checkbox that maps onto CanManageEvents — an
+        // establishment that can manage events is an organizer, every
+        // establishment is an operator by default (matches the legacy model,
+        // which had no separate operator concept). Admins can still flip this
+        // post-approval; allowing the creator to set it during Draft/Rejected
+        // only declares intent and stays inside the IsEditableByCreator gate.
+        if (canManageEvents.IsSet) CanManageEvents = canManageEvents.Value ?? false;
     }
 
     private static string NormalizeRequired(string? raw)
