@@ -3,6 +3,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { EstablishmentService } from '../../core/services/establishment.service';
+import { AssetService } from '../../core/services/asset.service';
 import {
   ReviewDetail,
   ReviewHistoryItem,
@@ -86,12 +87,15 @@ import { ApiErrorService } from '../../core/http/api-error.service';
         <section class="card" *ngIf="d.documents.length">
           <h2>Documents</h2>
           <table class="table">
-            <thead><tr><th>Type</th><th>Asset</th><th>Uploaded</th></tr></thead>
+            <thead><tr><th>Type</th><th>Uploaded</th><th></th></tr></thead>
             <tbody>
               <tr *ngFor="let doc of d.documents">
                 <td>{{ doc.documentType }}</td>
-                <td class="mono">{{ doc.assetId }}</td>
                 <td>{{ doc.uploadedAt | date: 'medium' }}</td>
+                <td class="doc-actions">
+                  <button class="btn btn-ghost" (click)="assets.openInNewTab(doc.assetId)">Preview</button>
+                  <button class="btn btn-ghost" (click)="assets.saveAs(doc.assetId, doc.documentType)">Download</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -129,6 +133,7 @@ export class ReviewDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly service = inject(EstablishmentService);
+  protected readonly assets = inject(AssetService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
   private readonly apiError = inject(ApiErrorService);

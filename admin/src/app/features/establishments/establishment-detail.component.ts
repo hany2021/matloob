@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Observable } from 'rxjs';
 
 import { EstablishmentService } from '../../core/services/establishment.service';
+import { AssetService } from '../../core/services/asset.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { EstablishmentDetail } from '../../core/models/establishment';
 import { MemberSummary } from '../../core/models/admin-establishment';
 import { LoadingComponent } from '../../shared/components/loading.component';
@@ -34,6 +37,16 @@ import { ApiErrorService } from '../../core/http/api-error.service';
       <app-loading *ngIf="loading()" />
 
       <ng-container *ngIf="!loading() && detail() as d">
+        <section class="card actions" *ngIf="isAdmin()">
+          <button class="btn" *ngIf="d.status === 'PendingReview'" (click)="onApprove()" [disabled]="busy()">Approve</button>
+          <button class="btn btn-danger" *ngIf="d.status === 'PendingReview'" (click)="onReject()" [disabled]="busy()">Reject</button>
+          <button class="btn btn-danger" *ngIf="d.status === 'Approved'" (click)="onSuspend()" [disabled]="busy()">Suspend</button>
+          <button class="btn" *ngIf="d.status === 'Suspended'" (click)="onReinstate()" [disabled]="busy()">Reinstate</button>
+          <span class="muted" *ngIf="d.status === 'Draft' || d.status === 'Rejected'">
+            No review actions in status {{ d.status }}.
+          </span>
+        </section>
+
         <section class="card">
           <h2>General</h2>
           <dl class="kv">
@@ -53,12 +66,15 @@ import { ApiErrorService } from '../../core/http/api-error.service';
         <section class="card" *ngIf="d.documents.length">
           <h2>Documents</h2>
           <table class="table">
-            <thead><tr><th>Type</th><th>Asset</th><th>Uploaded</th></tr></thead>
+            <thead><tr><th>Type</th><th>Uploaded</th><th></th></tr></thead>
             <tbody>
               <tr *ngFor="let doc of d.documents">
                 <td>{{ doc.documentType }}</td>
-                <td class="mono">{{ doc.assetId }}</td>
                 <td>{{ doc.uploadedAt | date: 'medium' }}</td>
+                <td class="doc-actions">
+                  <button class="btn btn-ghost" (click)="assets.openInNewTab(doc.assetId)">Preview</button>
+                  <button class="btn btn-ghost" (click)="assets.saveAs(doc.assetId, doc.documentType)">Download</button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -112,41 +128,107 @@ import { ApiErrorService } from '../../core/http/api-error.service';
       .kv dt { color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
       .kv dd { margin: 0; font-weight: 500; }
       .mono { font-family: ui-monospace, SFMono-Regular, monospace; }
+      .actions { display: flex; gap: 8px; align-items: center; }
+      .doc-actions { display: flex; gap: 8px; }
     `,
   ],
 })
 export class EstablishmentDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly service = inject(EstablishmentService);
+  protected readonly assets = inject(AssetService);
   private readonly dialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
   private readonly apiError = inject(ApiErrorService);
+  private readonly auth = inject(AuthService);
 
   protected readonly loading = signal(true);
+  protected readonly busy = signal(false);
   protected readonly detail = signal<EstablishmentDetail | null>(null);
   protected readonly members = signal<MemberSummary[]>([]);
+  protected readonly isAdmin = this.auth.isAdmin;
 
   protected readonly id = computed(() => this.route.snapshot.paramMap.get('id') ?? '');
 
   ngOnInit(): void {
-    const id = this.id();
-    if (!id) {
+    if (!this.id()) {
       this.loading.set(false);
       return;
     }
-    this.service.getDetail(id).subscribe({
+    this.reload();
+    this.service.listMembers(this.id()).subscribe({
+      next: (r) => this.members.set(r.members),
+      // 403/404 here just means the caller isn't permitted to enumerate
+      // members — leave the section empty rather than failing the page.
+      error: () => undefined,
+    });
+  }
+
+  private reload(): void {
+    this.loading.set(true);
+    this.service.getDetail(this.id()).subscribe({
       next: (d) => {
         this.detail.set(d);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
-    this.service.listMembers(id).subscribe({
-      next: (r) => this.members.set(r.members),
-      // 403/404 here just means the caller isn't permitted to enumerate
-      // members — leave the section empty rather than failing the page.
-      error: () => undefined,
+  }
+
+  // -- Admin review actions (status-aware; backend enforces admin-only) ----
+
+  async onApprove(): Promise<void> {
+    const ok = await this.dialog.confirm({
+      title: 'Approve this establishment?',
+      message: 'They will gain full access immediately.',
+      confirmLabel: 'Approve',
     });
+    if (!ok) return;
+    this.runAction(this.service.approve(this.id()), 'Approved.', 'Approve failed');
+  }
+
+  async onReject(): Promise<void> {
+    const reason = await this.promptReason('Reject this establishment?');
+    if (!reason) return;
+    this.runAction(this.service.reject(this.id(), reason), 'Rejected.', 'Reject failed');
+  }
+
+  async onSuspend(): Promise<void> {
+    const reason = await this.promptReason('Suspend this establishment?');
+    if (!reason) return;
+    this.runAction(this.service.suspend(this.id(), reason), 'Suspended.', 'Suspend failed');
+  }
+
+  async onReinstate(): Promise<void> {
+    const ok = await this.dialog.confirm({ title: 'Reinstate this establishment?', confirmLabel: 'Reinstate' });
+    if (!ok) return;
+    this.runAction(this.service.reinstate(this.id()), 'Reinstated.', 'Reinstate failed');
+  }
+
+  private runAction(obs: Observable<unknown>, success: string, failure: string): void {
+    this.busy.set(true);
+    obs.subscribe({
+      next: () => {
+        this.toast.success(success);
+        this.busy.set(false);
+        this.reload();
+      },
+      error: (err) => {
+        this.apiError.notify(err, failure);
+        this.busy.set(false);
+      },
+    });
+  }
+
+  private async promptReason(title: string): Promise<string | null> {
+    const proceed = await this.dialog.confirm({ title, kind: 'danger', confirmLabel: 'Continue' });
+    if (!proceed) return null;
+    const reason = window.prompt('Reason (required, ≤2000 chars):');
+    if (!reason || !reason.trim()) {
+      this.toast.warning('Reason is required.');
+      return null;
+    }
+    return reason.trim();
   }
 
   async onRemove(member: MemberSummary): Promise<void> {
