@@ -1,6 +1,6 @@
 # Session Resume — Matloob backoffice migration (.NET API ⇄ Next.js public frontend)
 
-> Handoff doc to continue work in a fresh session. Last updated after Services+Products, Events, Notifications, the global { data } envelope + Laravel 422, the polymorphic `media` table, and a full frontend coverage sweep.
+> Handoff doc to continue work in a fresh session. Last updated after the **individual establishment registration flow** (frontend) + **admin review/preview wiring** + the **admin `{ data }` envelope-unwrap fix** (see §6 top, ⭐ THIS SESSION) — on top of Services+Products, Events, Notifications, the global { data } envelope + Laravel 422, the polymorphic `media` table, and a full frontend coverage sweep.
 > **Start at §6 (CURRENT STATE & NEXT STEPS)** — it has the live status, standing conventions, and the prioritized backlog. §0–§5 are the original mission/context.
 
 ---
@@ -114,10 +114,33 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 
 ## 6. CURRENT STATE & NEXT STEPS (read this first)
 
-**Branch:** `feature/api-migration-services-products` (NOT merged to main). ~54 commits, each a clean phase. **Full test suite: 492/492 green.** Run `git log --oneline` for the slice history. Migrations auto-apply on API start (`Database:AutoMigrate=true` in Dev).
+**Branches (two repos, different remotes):**
+- **Backoffice** (`matloob-backoffice (.net + angular)`, remote = github.com/hany2021/matloob): `feature/api-migration-services-products` **+ mirrored `dev`**, HEAD `14f544c`. The ~54 migration commits + this session's establishment-registration-type (backend) and admin review/preview wiring. **Full .NET test suite: 492/492 green** (this session's backend deltas are tiny + no migration; the new admin/frontend UI is verified live in-browser, not by the .NET suite).
+- **Frontend** (`matloob-frontend`, remote = internal NEC DevOps server): `feature/individual-establishments` **+ mirrored `dev`**, HEAD `fd7eb69`.
+
+Migrations auto-apply on API start (`Database:AutoMigrate=true` in Dev). Run `git log --oneline` per repo for the slice history.
 
 ### Live stack is currently RUNNING (manual QA in progress)
 Postgres in Docker (`docker compose -f docker/docker-compose.yml up -d`, host :54321). API via `dotnet run` (:5180), Angular admin via `npm start` (:4200), Next.js public frontend via `npm run dev -- -p 3001`. **IdentityServer (NEC IdM) `http://10.100.6.4:55310`** — reachable; same IdM account logs into :3001 (user) and :4200 (admin). No app Dockerfiles for API/admin (only the frontend has one + Postgres is dockerized) — running hybrid by user choice.
+
+### Done — individual establishment registration (frontend) + admin review/preview wiring  ⭐ THIS SESSION
+End-to-end "register an establishment → admin approves → it becomes usable" cycle, **verified live in-browser** (login → fill → upload docs → submit → admin review queue → approve → status `معتمدة` + appears in the account switcher as Owner).
+
+**Registration-type decision (important — see also memory `establishment-registration-type-canmanageevents`):** there is **NO organizer/operator concept** in either the legacy Laravel app or the new backend (legacy `establishment_type` was a hardcoded `'establishment'` string from a now-dropped Qiwa call; both schemas only ever had `is_sponsor` + `can_manage_events`). So نوع التسجيل is a **single "منظم فعاليات" checkbox mapped to `can_manage_events`**; **"مشغل" (operator) is the default for every establishment** (no separate flag). Card shows «منظم ومشغل» when true else «مشغل».
+
+**Backend (no migration — reuses the existing `can_manage_events` column):**
+- `Establishment.UpdateBasicInfo` + `UpdateBasicInfoRequest`/`UpdateBasicInfoEndpoint` accept `CanManageEvents` (so the public checkbox persists during Draft/Rejected; admins can still flip it). 
+- `ListMine` (`GET /api/v1/establishments`) now also returns `canManageEvents`, `area`, `economicActivity`, `createdAt`, `updatedAt` for the registration cards.
+- Self-service surface used: create draft `POST registration/drafts`→`{id}`; save `PATCH registration/{id}/basic-info`; read `GET {id}`; submit `POST registration/{id}/submit` (gate: name, CR number, laborOfficeId, sequenceNumber, city, email, phone **+ BOTH documents** + CR-uniqueness); discard `DELETE registration/{id}` (Draft-only soft-delete). Docs = 2 fixed slots (CommercialRegistration + AuthorizationLetter): upload bytes `POST /api/v1/assets` then link.
+
+**Admin (Angular, in `admin/`):**
+- **`ApiClient` now unwraps the global `{ data }` envelope** (`admin/src/app/core/http/api-client.ts`, every verb, guards 204/null). This was the bug making admin screens render empty (review queue read `.items` off `{data:{...}}`). Fixes review queue/detail, establishments, opportunities, offers, evaluations uniformly. No service double-unwraps (audited).
+- **`establishment-detail` (`/establishments/:id`)** gained status-aware **Approve/Reject/Suspend/Reinstate** (admin-gated via `auth.isAdmin`) — previously those lived only on the review-queue detail page.
+- **Document Preview/Download** on both `establishment-detail` and `review-detail`: establishment docs are **Private** assets (a plain link 401s), so `AssetService.downloadBlob` fetches bytes with the bearer (HttpClient + auth interceptor) → `openInNewTab` previews inline, `saveAs` downloads.
+
+**Frontend (Next.js, `matloob-frontend` repo):** account-dropdown actions (منشآتي / تسجيل منشأة, individual-only); My Establishments list (status badges, registration type, location/CR/dates, skeletons, empty state, discard-with-confirm); full RTL registration form (single منظم فعاليات checkbox, basic/contact/location sections, document upload + in-app preview via auth blob, save-as-draft, submit); create-draft → redirect to form (uses `mutateAsync` to survive React-18 StrictMode double-mount); continue/discard drafts; toast `offset` so it clears the navbar. Reads via the `{ data }` envelope; surfaces backend 4xx (no fake success). New files under `app/[locale]/(AuthRoutes)/individual/establishments/`, `app/_components/Pages/Individual/establishments/`, `queryhooks/individual/establishments/`, `types/individual/establishments.ts`.
+
+**Not built (no backend storage — intentionally omitted, not faked):** representative/owner section, organizer event-types, operator service-types, extra/national-address attachments.
 
 ### Done — fix(cors): expose Precognition headers cross-origin
 Live bug: every laravel-precognition form (individual profile personal-info, contact-info, bank, experience, opportunity create, event wizard, evaluations) crashed with *"Did not receive a Precognition response"*. Root cause: the Precognition middleware **set** `Precognition`/`Precognition-Success` but CORS only **exposed** `Content-Disposition`, so cross-origin (:3001→:5180) the browser hid them from JS. Fix: added both to `WithExposedHeaders` in `Program.cs`. **Don't remove laravel-precognition** (≈17 components + shared form infra + axios wiring; violates the no-frontend-refactor rule) — the API speaks Precognition correctly; this was the only gap. Verified live; integration tests are same-origin so never caught it.
