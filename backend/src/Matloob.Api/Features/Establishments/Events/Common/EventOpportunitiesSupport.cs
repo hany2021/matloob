@@ -145,8 +145,17 @@ internal static partial class EventOpportunitiesSupport
         Guid establishmentId, string? uploadedByUserId, DateTimeOffset now, CancellationToken ct)
     {
         // Event's current category pivot — attach any newly-referenced categories.
+        // Include BOTH persisted rows AND ones already staged on the change tracker
+        // (step_four, in the SAME request, has typically just added this event's
+        // categories), since re-adding the same {EventId,OpportunityCategoryId}
+        // composite key throws a duplicate-tracking error. Ignore tracked rows
+        // marked for deletion so a re-selected category is still re-attached.
         var eventCategoryIds = (await db.EventOpportunityCategories
             .Where(p => p.EventId == eventId).Select(p => p.OpportunityCategoryId).ToListAsync(ct))
+            .Concat(db.EventOpportunityCategories.Local
+                .Where(p => p.EventId == eventId
+                            && db.Entry(p).State != EntityState.Deleted)
+                .Select(p => p.OpportunityCategoryId))
             .ToHashSet();
 
         var created = new List<Opportunity>(items.Count);

@@ -497,6 +497,32 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode); // targeted error kept
     }
 
+    [Fact]
+    public async Task CreateEvent_StepFourCategory_PlusOpportunityOfSameCategory_DoesNotDuplicateTrack()
+    {
+        // Regression: step_four[opportunities_categories] and a nested opportunity
+        // of the SAME category both added the EventOpportunityCategory pivot in one
+        // request -> EF "another instance with the same key is already being tracked"
+        // -> 500. Adding any opportunity (the frontend always sends both) blew up.
+        var est = await BuildEstablishmentAsync("CR-EV-OPP-DUP");
+
+        var fields = new List<(string, string)>();
+        fields.AddRange(StepOne());
+        fields.Add(("step_four[opportunities_categories][0]", CategoryId.ToString()));
+        fields.Add(("opportunities[0][opportunity_category_uuid]", CategoryId.ToString()));
+        fields.Add(("opportunities[0][name]", "Crowd Management"));
+        fields.Add(("opportunities[0][description]", "A valid opportunity description text."));
+        fields.Add(("opportunities[0][start_date]", "2026-12-01"));
+        fields.Add(("opportunities[0][end_date]", "2026-12-05"));
+        fields.Add(("opportunities[0][lat]", "24.7"));
+        fields.Add(("opportunities[0][lon]", "46.6"));
+        fields.Add(("opportunities[0][required_personnel]", "2"));
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Form(fields.ToArray()));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
     // ===================== grouped list / get =====================
 
     [Fact]

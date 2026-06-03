@@ -275,8 +275,15 @@ internal static class EventWriteSupport
 
             var existing = await db.EventOpportunityCategories
                 .Where(p => p.EventId == @event.Id).ToListAsync(ct);
-            db.EventOpportunityCategories.RemoveRange(existing);
-            foreach (var id in ids)
+            var existingIds = existing.Select(p => p.OpportunityCategoryId).ToHashSet();
+            // Diff (remove de-selected, add only new) rather than remove-all +
+            // add-all: re-adding a composite key whose row is still tracked (as
+            // Deleted) throws "another instance with the same key is already being
+            // tracked". The diff also leaves the kept rows in place for the nested
+            // opportunities pass below to reuse.
+            db.EventOpportunityCategories.RemoveRange(
+                existing.Where(p => !ids.Contains(p.OpportunityCategoryId)));
+            foreach (var id in ids.Where(id => !existingIds.Contains(id)))
                 db.EventOpportunityCategories.Add(new EventOpportunityCategory(@event.Id, id));
 
             @event.SetStepsDone(4);
