@@ -130,12 +130,52 @@ public static class EstablishmentProfileReadMapper
             Id = e.Id,
             Name = e.Name,
             Email = e.Email,
-            ProfileCompletePercentage = 0,
+            ProfileCompletePercentage = ComputeCompletePercentage(e, services, products, bankAccount),
             Logo = logoUrl,
             Profile = profile,
             Rate = null,
             TotalReviews = null,
             CanManageEvents = e.CanManageEvents,
         };
+    }
+
+    /// <summary>
+    /// Establishment profile completeness, faithful to the legacy
+    /// <c>EstablishmentSupport::getEstablishmentProfileCompletePercentage</c>:
+    /// five sections worth 20% each (max 100). The legacy
+    /// <c>establishment_profiles</c> (general-info) and <c>contact_infos</c>
+    /// tables were collapsed onto the <see cref="Establishment"/> row, so the
+    /// legacy "relation exists" checks become field-populated checks here.
+    /// </summary>
+    private static int ComputeCompletePercentage(
+        Establishment e,
+        IReadOnlyList<object> services,
+        IReadOnlyList<object> products,
+        EstablishmentBankAccountBlock? bankAccount)
+    {
+        var points = 0;
+
+        // 1. has at least one service OR product
+        if (services.Count > 0 || products.Count > 0) points++;
+
+        // 2. general info populated (legacy profileGeneralInfo row exists)
+        if (!string.IsNullOrWhiteSpace(e.EconomicActivity)
+            || !string.IsNullOrWhiteSpace(e.Area)
+            || !string.IsNullOrWhiteSpace(e.Description)
+            || !string.IsNullOrWhiteSpace(e.City)) points++;
+
+        // 3. contact info: phone AND additional contact number AND email
+        if (!string.IsNullOrWhiteSpace(e.Phone)
+            && !string.IsNullOrWhiteSpace(e.AdditionalContactNumber)
+            && !string.IsNullOrWhiteSpace(e.Email)) points++;
+
+        // 4. bank account linked
+        if (bankAccount is not null) points++;
+
+        // 5. years of experience set
+        if (e.YearsOfExperience is not null) points++;
+
+        const int totalPoints = 5;
+        return points * 100 / totalPoints;
     }
 }

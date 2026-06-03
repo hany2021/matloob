@@ -103,7 +103,11 @@ public sealed class MeProfileCompatibilityTests
         Assert.Equal(id, data.GetProperty("id").GetGuid());
         Assert.False(string.IsNullOrEmpty(data.GetProperty("name").GetString()));
         Assert.False(string.IsNullOrEmpty(data.GetProperty("email").GetString()));
-        Assert.Equal(0, data.GetProperty("profile_complete_percentage").GetInt32());
+        // 5 sections × 20% (legacy EstablishmentSupport formula). This freshly
+        // approved establishment only has general-info populated (city) — no
+        // services/products, additional contact number, bank account, or
+        // years-of-experience — so exactly one section counts.
+        Assert.Equal(20, data.GetProperty("profile_complete_percentage").GetInt32());
         Assert.Equal(JsonValueKind.Null, data.GetProperty("logo").ValueKind);
         Assert.Equal(JsonValueKind.Null, data.GetProperty("rate").ValueKind);
         Assert.Equal(JsonValueKind.Null, data.GetProperty("total_reviews").ValueKind);
