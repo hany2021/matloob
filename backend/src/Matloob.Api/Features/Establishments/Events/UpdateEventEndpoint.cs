@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FastEndpoints;
 using FluentValidation.Results;
 using Matloob.Api.Features.Establishments.Common;
@@ -38,7 +39,9 @@ public sealed class UpdateEventEndpoint : EndpointWithoutRequest
             "/api/establishments/events/{id:guid}",
             "/api/v1/establishments/{establishmentId}/events/{id:guid}");
         Policies(MatloobPolicies.User);
-        AllowFileUploads();
+        // AllowFileUploads() intentionally NOT called — see CreateEventEndpoint.
+        // EventFormReader serves both the JSON (file-less steps + precognition
+        // pings) and multipart (steps with uploads) wizard submissions.
         Description(b => b
             .Produces<EventResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -61,7 +64,18 @@ public sealed class UpdateEventEndpoint : EndpointWithoutRequest
             .FirstOrDefaultAsync(e => e.Id == id && e.EstablishmentId == establishmentId.Value, ct);
         if (@event is null) { await Send.NotFoundAsync(ct); return; }
 
-        var form = await HttpContext.Request.ReadFormAsync(ct);
+        IFormCollection form;
+        try
+        {
+            form = await EventFormReader.ReadAsync(HttpContext, ct);
+        }
+        catch (JsonException)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext, StatusCodes.Status400BadRequest,
+                "invalid_json", "Request body is not valid JSON.", ct);
+            return;
+        }
 
         var errors = await EventWriteSupport.ValidateAsync(_db, form, isCreate: false, ct);
         if (errors.Count > 0)

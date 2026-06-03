@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FastEndpoints;
 using FluentValidation.Results;
 using Matloob.Api.Features.Establishments.Common;
@@ -37,7 +38,11 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
             "/api/establishments/events",
             "/api/v1/establishments/{establishmentId}/events");
         Policies(MatloobPolicies.User);
-        AllowFileUploads();
+        // AllowFileUploads() intentionally NOT called: it restricts the endpoint
+        // to multipart/form-data and 415s JSON. The wizard's laravel-precognition
+        // form posts file-less steps (step one) + validation pings as JSON, and
+        // only switches to multipart when a step actually carries files.
+        // EventFormReader reads both shapes into one IFormCollection.
         Description(b => b
             .Produces<EventResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -55,7 +60,18 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
             .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
         if (establishmentId is null) return;
 
-        var form = await HttpContext.Request.ReadFormAsync(ct);
+        IFormCollection form;
+        try
+        {
+            form = await EventFormReader.ReadAsync(HttpContext, ct);
+        }
+        catch (JsonException)
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext, StatusCodes.Status400BadRequest,
+                "invalid_json", "Request body is not valid JSON.", ct);
+            return;
+        }
 
         var errors = await EventWriteSupport.ValidateAsync(_db, form, isCreate: true, ct);
         if (errors.Count > 0)

@@ -215,6 +215,162 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         Assert.Equal("upcoming", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
+    // ===================== create / update via JSON (wizard precognition) =====================
+    // The public frontend's laravel-precognition `useForm` posts file-less steps
+    // (step one) and validation pings as application/json, switching to multipart
+    // only when a step carries File uploads. These tests pin that the endpoints
+    // accept the JSON shape (was a 415 before EventFormReader). The body mirrors
+    // the wizard exactly: { ...emptyEventForm (null steps), [currentStep]: data }.
+
+    private static HttpContent Json(object body)
+        => System.Net.Http.Json.JsonContent.Create(body);
+
+    [Fact]
+    public async Task CreateEvent_StepOne_Json_Returns201_Draft()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-CREATE");
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "JSON Conference", description = "An evening celebration event." },
+            step_two = (object?)null,
+            step_three = (object?)null,
+            step_four = (object?)null,
+            step_five = (object?)null,
+            opportunities = Array.Empty<object>(),
+        };
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(body));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("JSON Conference", data.GetProperty("name").GetString());
+        Assert.Equal("drafted", data.GetProperty("status").GetString());
+        Assert.Equal(EventTypeId, data.GetProperty("type").GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task CreateEvent_Json_Precognition_Returns204_NoEvent()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-PRECOG");
+        var owner = Owner();
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "Ping", description = "Validation-only ping body." },
+        };
+        var req = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/establishments/events?establishment_id={est}")
+        { Content = Json(body) };
+        req.Headers.Add("Precognition", "true");
+
+        var resp = await owner.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        // A precognition ping must not create anything.
+        var list = await owner.GetAsync($"/api/establishments/events?establishment_id={est}");
+        using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+        Assert.Equal(0, doc.RootElement.DataOf().GetProperty("drafted").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task CreateEvent_Json_MissingType_Returns422()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-422");
+        var body = new { step_one = new { name = "No Type", description = "desc here long enough" } };
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(body));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateEvent_InvalidJson_Returns400()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-BAD");
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}",
+            new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StepTwo_Json_AppliesSchedule()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-STEP2");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var body = new
+        {
+            step_two = new
+            {
+                lat = 24.7,
+                lon = 46.6,
+                location_title = "Riyadh",
+                start_date = "2026-12-01",
+                end_date = "2026-12-05",
+                min_attendees = 100,
+                max_attendees = 500,
+            },
+        };
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}", Json(body));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("2026-12-01", data.GetProperty("start_date").GetString());
+        Assert.Equal(100, data.GetProperty("min_attendees").GetInt32());
+        Assert.True(data.GetProperty("steps_done").GetInt32() >= 2);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StepFour_Json_SetsCategories()
+    {
+        // Exercises the JSON array flattener: opportunities_categories[] -> step_four[opportunities_categories][0].
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-STEP4");
+        var owner = Owner();
+        var id = await CreateDraftAsync(owner, est);
+
+        var body = new { step_four = new { opportunities_categories = new[] { CategoryId.ToString() } } };
+        var resp = await owner.PatchAsync(
+            $"/api/establishments/events/{id}?establishment_id={est}", Json(body));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var cats = doc.RootElement.DataOf().GetProperty("opportunity_categories");
+        Assert.Equal(1, cats.GetArrayLength());
+        Assert.Equal(CategoryId, cats[0].GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task CreateEvent_Json_MultiStep_WithPublish_IsUpcoming()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-PUB");
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "JSON Future Fest", description = "An evening celebration event." },
+            step_two = new
+            {
+                lat = 24.7,
+                lon = 46.6,
+                location_title = "Riyadh",
+                start_date = "2099-01-01",
+                end_date = "2099-01-05",
+                min_attendees = 100,
+                max_attendees = 500,
+            },
+            step_five = new { publish = 1 },
+        };
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(body));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.Equal("upcoming", doc.RootElement.DataOf().GetProperty("status").GetString());
+    }
+
     // ===================== grouped list / get =====================
 
     [Fact]
