@@ -8,6 +8,7 @@ using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Events;
+using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Establishments.Events;
 
@@ -88,17 +89,41 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
             return;
         }
 
-        var typeId = Guid.Parse(EventWriteSupport.Field(form, "step_one", "type_uuid")!);
-        var seasonId = Guid.TryParse(EventWriteSupport.Field(form, "step_one", "season_id"), out var sid)
-            ? sid : (Guid?)null;
-        var @event = new Event(
-            Guid.NewGuid(),
-            establishmentId.Value,
-            typeId,
-            EventWriteSupport.Field(form, "step_one", "name")!,
-            EventWriteSupport.Field(form, "step_one", "description")!,
-            seasonId);
-        _db.Events.Add(@event);
+        // Upsert. The wizard always POSTs to this route (it never PATCHes) and
+        // echoes the accumulated draft's id in the body from step two onward,
+        // expecting an update — exactly the legacy EventService behaviour
+        // (Event::whereUuid(id)->first() then update-or-create). Without this,
+        // every step spawned a duplicate draft. Scope the lookup to the caller's
+        // establishment so a foreign id can't be hijacked; an unknown/foreign id
+        // falls through to create-new (matching legacy's null -> create).
+        Event @event;
+        bool created;
+        var bodyId = EventWriteSupport.EventId(form);
+        var existing = bodyId is { } gid
+            ? await _db.Events.FirstOrDefaultAsync(
+                e => e.Id == gid && e.EstablishmentId == establishmentId.Value, ct)
+            : null;
+
+        if (existing is not null)
+        {
+            @event = existing;
+            created = false;
+        }
+        else
+        {
+            var typeId = Guid.Parse(EventWriteSupport.Field(form, "step_one", "type_uuid")!);
+            var seasonId = Guid.TryParse(EventWriteSupport.Field(form, "step_one", "season_id"), out var sid)
+                ? sid : (Guid?)null;
+            @event = new Event(
+                Guid.NewGuid(),
+                establishmentId.Value,
+                typeId,
+                EventWriteSupport.Field(form, "step_one", "name")!,
+                EventWriteSupport.Field(form, "step_one", "description")!,
+                seasonId);
+            _db.Events.Add(@event);
+            created = true;
+        }
 
         await EventWriteSupport.ApplyStepsAsync(
             _db, _storage, @event, form, _currentUser.UserId, _clock.GetUtcNow(), ct);
@@ -107,6 +132,9 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
         var response = await EventReadMapper.BuildAsync(_db, @event, ct);
         HttpContext.Response.Headers.Location =
             $"/api/v1/establishments/{establishmentId.Value}/events/{@event.Id}";
-        await Send.ResponseAsync(response, StatusCodes.Status201Created, ct);
+        await Send.ResponseAsync(
+            response,
+            created ? StatusCodes.Status201Created : StatusCodes.Status200OK,
+            ct);
     }
 }

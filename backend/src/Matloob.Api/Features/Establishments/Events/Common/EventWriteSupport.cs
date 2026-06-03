@@ -38,6 +38,16 @@ internal static class EventWriteSupport
     public static bool HasStep(IFormCollection form, string step)
         => form.Keys.Any(k => k.StartsWith($"{step}[", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Top-level <c>id</c> the wizard echoes on every submit. The frontend
+    /// always POSTs to the create route (never PATCH) and carries the draft's
+    /// id in the body once it exists, expecting an upsert — mirrors the legacy
+    /// <c>EventService</c> ctor (<c>Event::whereUuid($data['id'])->first()</c>).
+    /// </summary>
+    public static Guid? EventId(IFormCollection form)
+        => form.TryGetValue("id", out var v) && Guid.TryParse(v.ToString(), out var id)
+            ? id : (Guid?)null;
+
     public static string? Field(IFormCollection form, string step, string field)
         => form.TryGetValue($"{step}[{field}]", out var v) ? v.ToString() : null;
 

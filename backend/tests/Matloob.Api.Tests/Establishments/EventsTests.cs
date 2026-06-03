@@ -371,6 +371,58 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         Assert.Equal("upcoming", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
+    [Fact]
+    public async Task CreateEvent_Json_WithExistingId_UpdatesInPlace_NoDuplicate()
+    {
+        // The wizard never PATCHes — it re-POSTs to the create route with the
+        // draft's id in the body and expects an upsert. Without it every step
+        // spawned a duplicate draft.
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-UPSERT");
+        var owner = Owner();
+
+        var step1 = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "Upsert Event", description = "An evening celebration event." },
+        };
+        var createResp = await owner.PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(step1));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        Guid id;
+        using (var d = JsonDocument.Parse(await createResp.Content.ReadAsStringAsync()))
+            id = d.RootElement.DataOf().GetProperty("id").GetGuid();
+
+        var step2 = new
+        {
+            id = id.ToString(),
+            step_one = new { type_uuid = EventTypeId, name = "Upsert Event", description = "An evening celebration event." },
+            step_two = new
+            {
+                lat = 24.7,
+                lon = 46.6,
+                location_title = "Riyadh",
+                start_date = "2026-12-01",
+                end_date = "2026-12-05",
+                min_attendees = 100,
+                max_attendees = 500,
+            },
+        };
+        var updateResp = await owner.PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(step2));
+
+        Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode); // 200 update, not 201 create
+        using (var d = JsonDocument.Parse(await updateResp.Content.ReadAsStringAsync()))
+        {
+            var data = d.RootElement.DataOf();
+            Assert.Equal(id, data.GetProperty("id").GetGuid()); // same event, not a new one
+            Assert.Equal("2026-12-01", data.GetProperty("start_date").GetString());
+        }
+
+        // Exactly one draft — no duplicate spawned.
+        var list = await owner.GetAsync($"/api/establishments/events?establishment_id={est}");
+        using (var d = JsonDocument.Parse(await list.Content.ReadAsStringAsync()))
+            Assert.Equal(1, d.RootElement.DataOf().GetProperty("drafted").GetArrayLength());
+    }
+
     // ===================== grouped list / get =====================
 
     [Fact]
