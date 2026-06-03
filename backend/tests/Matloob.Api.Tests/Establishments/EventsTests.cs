@@ -423,6 +423,35 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
             Assert.Equal(1, d.RootElement.DataOf().GetProperty("drafted").GetArrayLength());
     }
 
+    [Fact]
+    public async Task CreateEvent_Json_ShortSuccessCriteria_Returns422_WithIndexedErrorKey()
+    {
+        // The error key must carry the array index (step_three.success_criteria.0.*)
+        // so it matches the frontend field name and the inline error binds.
+        var est = await BuildEstablishmentAsync("CR-EV-JSON-SC-KEY");
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "SC Key", description = "An evening celebration event." },
+            step_three = new
+            {
+                success_criteria = new[]
+                {
+                    new { output = "Valid output text", success_criteria = "too short" }, // success_criteria < 30 chars
+                },
+            },
+        };
+
+        var resp = await Owner().PostAsync(
+            $"/api/establishments/events?establishment_id={est}", Json(body));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Assert.True(
+            doc.RootElement.GetProperty("errors")
+                .TryGetProperty("step_three.success_criteria.0.success_criteria", out _),
+            "Expected an indexed success-criteria error key matching the frontend field name.");
+    }
+
     // ===================== grouped list / get =====================
 
     [Fact]

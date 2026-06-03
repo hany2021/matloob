@@ -25,6 +25,9 @@ internal static class SuccessCriteriaSupport
 
     public sealed class CriterionInput
     {
+        /// <summary>Array index in the submitted set — used to build indexed,
+        /// frontend-matching validation error keys (e.g. <c>…success_criteria.0.output</c>).</summary>
+        public int Index { get; set; }
         public string? Output { get; set; }
         public string? SuccessCriteria { get; set; }
         public string? Comment { get; set; }
@@ -44,7 +47,7 @@ internal static class SuccessCriteriaSupport
 
         var byIndex = new SortedDictionary<int, CriterionInput>();
         CriterionInput At(int i) =>
-            byIndex.TryGetValue(i, out var c) ? c : byIndex[i] = new CriterionInput();
+            byIndex.TryGetValue(i, out var c) ? c : byIndex[i] = new CriterionInput { Index = i };
 
         foreach (var (key, value) in form)
         {
@@ -74,24 +77,30 @@ internal static class SuccessCriteriaSupport
     {
         foreach (var c in items)
         {
+            // Indexed, frontend-matching keys: the wizard names each field
+            // `<prefix>.<index>.<field>` (e.g. step_three.success_criteria.0.output),
+            // so the error key must carry the index for the inline error to bind
+            // via lodash get(form.errors, name). Non-indexed keys silently missed.
+            var p = $"{fieldPrefix}.{c.Index}";
+
             var output = c.Output?.Trim() ?? string.Empty;
             if (output.Length is < 10 or > 40)
-                errors.Add(($"{fieldPrefix}.output", "Output is required and must be 10–40 characters."));
+                errors.Add(($"{p}.output", "Output is required and must be 10–40 characters."));
 
             var sc = c.SuccessCriteria?.Trim() ?? string.Empty;
             if (sc.Length is < 30 or > 1000)
-                errors.Add(($"{fieldPrefix}.success_criteria", "Success criteria is required and must be 30–1000 characters."));
+                errors.Add(($"{p}.success_criteria", "Success criteria is required and must be 30–1000 characters."));
 
             var comment = c.Comment?.Trim();
             if (!string.IsNullOrEmpty(comment) && comment.Length is < 30 or > 1000)
-                errors.Add(($"{fieldPrefix}.comment", "Comment must be 30–1000 characters."));
+                errors.Add(($"{p}.comment", "Comment must be 30–1000 characters."));
 
             foreach (var f in c.Files)
             {
                 if (!ProfileAssetSupport.ImageOrPdfContentTypes.Contains(f.ContentType ?? string.Empty))
-                    errors.Add(($"{fieldPrefix}.uploads", "Uploads must be PDF, JPEG or PNG."));
+                    errors.Add(($"{p}.uploads", "Uploads must be PDF, JPEG or PNG."));
                 if (f.Length > MaxUploadBytes)
-                    errors.Add(($"{fieldPrefix}.uploads", "Each upload must be 4 MB or smaller."));
+                    errors.Add(($"{p}.uploads", "Each upload must be 4 MB or smaller."));
             }
         }
     }
