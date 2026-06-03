@@ -1,6 +1,6 @@
 # Session Resume — Matloob backoffice migration (.NET API ⇄ Next.js public frontend)
 
-> Handoff doc to continue work in a fresh session. Last updated after the **individual establishment registration flow** (frontend) + **admin review/preview wiring** + the **admin `{ data }` envelope-unwrap fix** (see §6 top, ⭐ THIS SESSION) — on top of Services+Products, Events, Notifications, the global { data } envelope + Laravel 422, the polymorphic `media` table, and a full frontend coverage sweep.
+> Handoff doc to continue work in a fresh session. Last updated after making the **event-creation wizard fully functional end-to-end** (create → add opportunity → publish, live-verified; see §6 top ⭐ THIS SESSION) — fixing a stack of layered bugs (multipart-vs-JSON 415, upsert-on-id, grouped-list shape, Precognition-Validate-Only, duplicate category-pivot 500, X-Commissioner-UUID, global 422 toast, the PrecognitionControlled TextArea loop/data-loss, opportunity modal-close). On top of: individual establishment registration + admin review/preview, Services+Products, Events, Notifications, the global { data } envelope + Laravel 422, the polymorphic `media` table. **Suite 504/504.** ⚠️ The event-wizard commit batch is on `dev` but **not yet pushed** to either remote.
 > **Start at §6 (CURRENT STATE & NEXT STEPS)** — it has the live status, standing conventions, and the prioritized backlog. §0–§5 are the original mission/context.
 
 ---
@@ -115,10 +115,13 @@ Files exist and routes are registered (API boots with them); **confirm a clean b
 ## 6. CURRENT STATE & NEXT STEPS (read this first)
 
 **Branches (two repos, different remotes):**
-- **Backoffice** (`matloob-backoffice (.net + angular)`, remote = github.com/hany2021/matloob): `feature/api-migration-services-products` **+ mirrored `dev`**, HEAD `a2f9bab`. The ~54 migration commits + this session's establishment-registration-type (backend) and admin review/preview wiring. **Full .NET test suite: 492/492 green** (this session's backend deltas are tiny + no migration; the new admin/frontend UI is verified live in-browser, not by the .NET suite).
-- **Frontend** (`matloob-frontend`, remote = github.com/EventsCenter/matloob-frontend): `feature/individual-establishments` **+ mirrored `dev`**, HEAD `778cc14`.
+- **Backoffice** (`matloob-backoffice (.net + angular)`, remote = github.com/hany2021/matloob): `dev`, HEAD `60f3508`. **Full .NET test suite: 504/504 green.** ⚠️ Local commits ahead of `origin/dev` are **NOT pushed** yet (the event-wizard fix batch below).
+- **Frontend** (`matloob-frontend`, remote = github.com/EventsCenter/matloob-frontend): `dev`, HEAD `f719ca5`. ⚠️ Local commits ahead of `github/dev` are **NOT pushed** yet.
 
 Migrations auto-apply on API start (`Database:AutoMigrate=true` in Dev). Run `git log --oneline` per repo for the slice history.
+
+### ⭐ THIS SESSION — event-creation wizard made fully functional (create → opportunity → publish), live-verified
+The Next.js event wizard never worked end-to-end against the new API. Found + fixed a stack of layered bugs (each its own entry below); the full **create event → add opportunity → publish** flow is now verified live in-browser (published event reached `status: active`). Batch of commits — **backoffice** (`28a2b74` JSON accept · `5a4d3a3` upsert-on-id · `8494756` indexed 422 keys · `11ad6e8` grouped-list shape + Precognition-Validate-Only · `60f3508` opportunity-500 dup-tracking) and **frontend** (`623d7df` X-Commissioner-UUID · `0803023` global 422 toast · `254a834` scoped opportunity validate · `ce2ee2d` TextArea loop/data-loss · `f719ca5` opportunity modal-close). Suite **504/504**. **Still open:** push these `dev` commits to both remotes (user has been keeping them local); a fresh frontend smoke with a non-expired Bearer.
 
 ### Done — multi-establishment context fix + event-wizard JSON fix (THIS SESSION, live-verified)
 Two live bugs found while QA-ing as a **multi-establishment** account (`OwnerProjectManager`, owns "Rotana" + "منشأة الاختبار"). Both verified in-browser end-to-end.
