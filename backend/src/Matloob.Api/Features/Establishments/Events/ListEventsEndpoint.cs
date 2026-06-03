@@ -55,16 +55,31 @@ public sealed class ListEventsEndpoint : EndpointWithoutRequest<GroupedEventsRes
 
         var mapped = await EventReadMapper.BuildManyAsync(_db, events, ct);
 
-        // Group by card_type — Finished collapses onto "ended".
+        // Group by card_type (Finished collapses onto "ended"), then wrap each in
+        // the legacy double-nested shape `{ status: { status: { …, data } } }` the
+        // frontend reads as data[status][status].
         var byCard = mapped.ToLookup(m => m.CardType);
         var grouped = new GroupedEventsResponse
         {
-            Active = byCard["active"].ToList(),
-            Upcoming = byCard["upcoming"].ToList(),
-            Drafted = byCard["drafted"].ToList(),
-            Ended = byCard["ended"].ToList(),
+            Active = Group(EventStatus.Active, "active", byCard),
+            Upcoming = Group(EventStatus.Upcoming, "upcoming", byCard),
+            Drafted = Group(EventStatus.Drafted, "drafted", byCard),
+            Ended = Group(EventStatus.Ended, "ended", byCard),
         };
 
         await Send.OkAsync(grouped, ct);
     }
+
+    private static Dictionary<string, EventGroup> Group(
+        EventStatus status, string cardType, ILookup<string, EventResponse> byCard)
+        => new()
+        {
+            [cardType] = new EventGroup
+            {
+                StatusLabel = status.Label(),
+                StatusIcon = string.Empty,
+                CardType = cardType,
+                Data = byCard[cardType].ToList(),
+            },
+        };
 }

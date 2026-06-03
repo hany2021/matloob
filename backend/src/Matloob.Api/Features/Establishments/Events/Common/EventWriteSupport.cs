@@ -31,6 +31,34 @@ internal static class EventWriteSupport
     public static bool IsPrecognitive(HttpContext ctx)
         => ctx.Request.Headers.ContainsKey("Precognition");
 
+    /// <summary>
+    /// laravel-precognition subset validation. When the client sends
+    /// <c>Precognition-Validate-Only</c> (a comma-separated field list, e.g.
+    /// <c>opportunities.0</c>), keep only the errors under those fields so
+    /// validating one section — e.g. a single opportunity in the wizard's step-4
+    /// modal — doesn't fail on an unrelated invalid step (a short success-criterion
+    /// elsewhere). No header (a real submit, or validate-all) → all errors kept.
+    /// Field list is normalized from bracket to dot notation
+    /// (<c>opportunities[0]</c> → <c>opportunities.0</c>) to match the error keys.
+    /// </summary>
+    public static List<(string Field, string Message)> FilterToValidateOnly(
+        List<(string Field, string Message)> errors, HttpContext ctx)
+    {
+        if (!ctx.Request.Headers.TryGetValue("Precognition-Validate-Only", out var raw))
+            return errors;
+
+        var only = raw.ToString()
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(f => f.Replace("[", ".").Replace("]", string.Empty))
+            .ToArray();
+        if (only.Length == 0) return errors;
+
+        return errors
+            .Where(e => only.Any(f =>
+                e.Field == f || e.Field.StartsWith(f + ".", StringComparison.Ordinal)))
+            .ToList();
+    }
+
     /// <summary>New files posted under <c>step_two[uploads][]</c>.</summary>
     public static IReadOnlyList<IFormFile> Uploads(IFormCollection form)
         => form.Files.GetFiles("step_two[uploads][]");

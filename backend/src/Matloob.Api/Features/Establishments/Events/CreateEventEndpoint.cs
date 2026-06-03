@@ -75,6 +75,7 @@ public sealed class CreateEventEndpoint : EndpointWithoutRequest
         }
 
         var errors = await EventWriteSupport.ValidateAsync(_db, form, isCreate: true, ct);
+        errors = EventWriteSupport.FilterToValidateOnly(errors, HttpContext);
         if (errors.Count > 0)
         {
             foreach (var (field, message) in errors)

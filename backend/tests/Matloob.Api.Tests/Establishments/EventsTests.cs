@@ -225,6 +225,11 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
     private static HttpContent Json(object body)
         => System.Net.Http.Json.JsonContent.Create(body);
 
+    // Grouped events are double-nested (legacy GroupedEventResource): the events
+    // array lives at data[status][status].data — what the frontend reads.
+    private static int GroupCount(System.Text.Json.JsonElement enveloped, string status)
+        => enveloped.GetProperty(status).GetProperty(status).GetProperty("data").GetArrayLength();
+
     [Fact]
     public async Task CreateEvent_StepOne_Json_Returns201_Draft()
     {
@@ -270,7 +275,7 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         // A precognition ping must not create anything.
         var list = await owner.GetAsync($"/api/establishments/events?establishment_id={est}");
         using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
-        Assert.Equal(0, doc.RootElement.DataOf().GetProperty("drafted").GetArrayLength());
+        Assert.Equal(0, GroupCount(doc.RootElement.DataOf(), "drafted"));
     }
 
     [Fact]
@@ -420,7 +425,7 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         // Exactly one draft — no duplicate spawned.
         var list = await owner.GetAsync($"/api/establishments/events?establishment_id={est}");
         using (var d = JsonDocument.Parse(await list.Content.ReadAsStringAsync()))
-            Assert.Equal(1, d.RootElement.DataOf().GetProperty("drafted").GetArrayLength());
+            Assert.Equal(1, GroupCount(d.RootElement.DataOf(), "drafted"));
     }
 
     [Fact]
@@ -452,6 +457,46 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
             "Expected an indexed success-criteria error key matching the frontend field name.");
     }
 
+    [Fact]
+    public async Task CreateEvent_Precognition_ValidateOnly_IgnoresUnrelatedStepErrors()
+    {
+        // Validating one section (step_one) must not 422 on an unrelated invalid
+        // step (step_three's short criterion) — the step-4 "add opportunity" flow.
+        var est = await BuildEstablishmentAsync("CR-EV-VONLY-IGNORE");
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "Scoped", description = "An evening celebration event." },
+            step_three = new { success_criteria = new[] { new { output = "Valid output text", success_criteria = "short" } } },
+        };
+        var req = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/establishments/events?establishment_id={est}")
+        { Content = Json(body) };
+        req.Headers.Add("Precognition", "true");
+        req.Headers.Add("Precognition-Validate-Only", "step_one");
+
+        var resp = await Owner().SendAsync(req);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode); // step_three error filtered out
+    }
+
+    [Fact]
+    public async Task CreateEvent_Precognition_ValidateOnly_KeepsTargetedStepErrors()
+    {
+        var est = await BuildEstablishmentAsync("CR-EV-VONLY-KEEP");
+        var body = new
+        {
+            step_one = new { type_uuid = EventTypeId, name = "Scoped", description = "An evening celebration event." },
+            step_three = new { success_criteria = new[] { new { output = "Valid output text", success_criteria = "short" } } },
+        };
+        var req = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/establishments/events?establishment_id={est}")
+        { Content = Json(body) };
+        req.Headers.Add("Precognition", "true");
+        req.Headers.Add("Precognition-Validate-Only", "step_three");
+
+        var resp = await Owner().SendAsync(req);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode); // targeted error kept
+    }
+
     // ===================== grouped list / get =====================
 
     [Fact]
@@ -471,8 +516,10 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
         var data = doc.RootElement.DataOf();
-        Assert.Equal(1, data.GetProperty("drafted").GetArrayLength());
-        Assert.Equal(1, data.GetProperty("upcoming").GetArrayLength());
+        Assert.Equal(1, GroupCount(data, "drafted"));
+        Assert.Equal(1, GroupCount(data, "upcoming"));
+        // Group carries the legacy metadata the frontend reads for tab titles.
+        Assert.Equal("drafted", data.GetProperty("drafted").GetProperty("drafted").GetProperty("card_type").GetString());
     }
 
     [Fact]

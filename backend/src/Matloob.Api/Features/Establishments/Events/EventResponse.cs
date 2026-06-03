@@ -72,15 +72,28 @@ public sealed class EventCategoryDto
     [JsonPropertyName("is_other")] public bool IsOther { get; init; }
 }
 
+/// <summary>One status group — Laravel <c>GroupedEventResource</c> inner shape.</summary>
+public sealed class EventGroup
+{
+    [JsonPropertyName("status_label")] public string StatusLabel { get; init; } = string.Empty;
+    [JsonPropertyName("status_icon")] public string StatusIcon { get; init; } = string.Empty;
+    [JsonPropertyName("card_type")] public string CardType { get; init; } = string.Empty;
+    [JsonPropertyName("data")] public IReadOnlyList<EventResponse> Data { get; init; } = [];
+}
+
 /// <summary>
-/// <c>GET /establishments/events</c> groups the establishment's events by
-/// card status (Laravel <c>GroupedEventResource</c>). The frontend reads
-/// <c>data.active|upcoming|drafted|ended</c>.
+/// <c>GET /establishments/events</c> groups the establishment's events by card
+/// status, mirroring the legacy <c>GroupedEventResource</c> EXACTLY — each top
+/// key wraps a single-entry object re-keyed by the same status, so the public
+/// frontend reads <c>data[status][status]</c> (e.g.
+/// <c>data.drafted.drafted.{data,status_label,status_icon,card_type}</c>). A bare
+/// array here made the frontend's <c>data.drafted.drafted</c> undefined → empty
+/// "untitled" tabs (events not shown).
 /// </summary>
 public sealed class GroupedEventsResponse
 {
-    [JsonPropertyName("active")] public IReadOnlyList<EventResponse> Active { get; init; } = [];
-    [JsonPropertyName("upcoming")] public IReadOnlyList<EventResponse> Upcoming { get; init; } = [];
-    [JsonPropertyName("drafted")] public IReadOnlyList<EventResponse> Drafted { get; init; } = [];
-    [JsonPropertyName("ended")] public IReadOnlyList<EventResponse> Ended { get; init; } = [];
+    [JsonPropertyName("active")] public Dictionary<string, EventGroup> Active { get; init; } = new();
+    [JsonPropertyName("upcoming")] public Dictionary<string, EventGroup> Upcoming { get; init; } = new();
+    [JsonPropertyName("drafted")] public Dictionary<string, EventGroup> Drafted { get; init; } = new();
+    [JsonPropertyName("ended")] public Dictionary<string, EventGroup> Ended { get; init; } = new();
 }
