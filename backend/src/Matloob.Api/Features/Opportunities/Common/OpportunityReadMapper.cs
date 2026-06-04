@@ -1,4 +1,6 @@
+using System.Globalization;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Events;
 using Matloob.Domain.Opportunities;
 using Matloob.Domain.Reference;
 
@@ -21,7 +23,9 @@ internal static class OpportunityReadMapper
         IReadOnlyList<SuccessManagementCriterion> successCriteria,
         IReadOnlyList<OpportunityUploadDto> uploads,
         int applicantsCount,
-        bool? isApplied)
+        bool? isApplied,
+        Matloob.Domain.Events.Event? eventEntity = null,
+        IReadOnlyList<object>? applicants = null)
     {
         return new OpportunityResponse
         {
@@ -54,7 +58,19 @@ internal static class OpportunityReadMapper
             CardType = null,
             StatusLabel = null,
             StatusIcon = null,
-            Event = null,
+            Event = eventEntity is null
+                ? null
+                : new OpportunityEventDto
+                {
+                    Id = eventEntity.Id,
+                    Name = eventEntity.Name,
+                    StartDate = eventEntity.StartDate?.ToString("yyyy-MM-dd"),
+                    EndDate = eventEntity.EndDate?.ToString("yyyy-MM-dd"),
+                    Status = eventEntity.Status.ToWire(),
+                    Lat = eventEntity.Latitude?.ToString(CultureInfo.InvariantCulture),
+                    Lon = eventEntity.Longitude?.ToString(CultureInfo.InvariantCulture),
+                    LocationTitle = eventEntity.LocationTitle,
+                },
             OpportunityCategory = category is null
                 ? null
                 : new OpportunityCategoryDto
@@ -67,7 +83,7 @@ internal static class OpportunityReadMapper
                     IsOther = category.IsOther,
                 },
             Uploads = uploads,
-            Applicants = [],
+            Applicants = applicants ?? [],
             ApplicantsCount = applicantsCount,
             CanEnd = CanEnd(opportunity.Status),
             Issuer = issuer is null

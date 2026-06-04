@@ -13,7 +13,11 @@ namespace Matloob.Api.Features.Applications.Common;
 ///   <item><c>applier_type</c> — <c>"user"</c> or <c>"organization"</c>
 ///     (Laravel returned <c>"organization"</c> for the establishment
 ///     morph alias; we keep that string for compat).</item>
-///   <item><c>applier</c> — minimal projection of the applying party.</item>
+///   <item><c>applier</c> — the full applying-party profile: the
+///     individual <c>UserResource</c> (<c>user</c>) or the establishment
+///     profile (<c>organization</c>), matching the frontend's
+///     <c>IndividualProfile</c>/<c>EstablishmentProfile</c> types the
+///     applicant detail page reads.</item>
 ///   <item><c>opportunity</c> — nested
 ///     <see cref="OpportunityResponse"/>.</item>
 ///   <item><c>status</c> + <c>status_label</c> — derived via
@@ -31,8 +35,14 @@ public sealed class OpportunityApplicationResponse
     [JsonPropertyName("applier_type")]
     public string ApplierType { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Full applier profile (the individual profile <c>ProfileResponse</c>
+    /// or the establishment profile), or the minimal
+    /// <see cref="ApplicationApplierDto"/> fallback. Typed <c>object</c>
+    /// because the shape is polymorphic on <see cref="ApplierType"/>.
+    /// </summary>
     [JsonPropertyName("applier")]
-    public ApplicationApplierDto? Applier { get; init; }
+    public object? Applier { get; init; }
 
     [JsonPropertyName("opportunity")]
     public OpportunityResponse? Opportunity { get; init; }

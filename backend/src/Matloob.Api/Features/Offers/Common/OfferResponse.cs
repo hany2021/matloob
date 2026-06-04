@@ -131,8 +131,16 @@ public sealed class OfferJobTitleDto
     [JsonPropertyName("id")]
     public Guid Id { get; init; }
 
+    /// <summary>Ajeer job-title name. The frontend reads this for ajeer offers.</summary>
     [JsonPropertyName("name")]
     public string? Name { get; init; }
+
+    /// <summary>
+    /// Opportunity-category title. For Matloob offers the "profession" is an
+    /// opportunity category, and the frontend reads <c>job_title.title</c>.
+    /// </summary>
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
 }
 
 public sealed class OfferCancellationRequestDto

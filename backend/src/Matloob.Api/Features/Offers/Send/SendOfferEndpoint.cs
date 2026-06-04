@@ -75,6 +75,16 @@ public sealed class SendOfferEndpoint
 
     public override async Task HandleAsync(SendOfferRequest req, CancellationToken ct)
     {
+        // Precognition validate-only ping — the offer form's step-1 "next"
+        // (تفاصيل العرض → مراجعة وإرسال) sends one. FluentValidation has
+        // already run; stop before any persistence so the ping never creates
+        // a real offer. (Mirrors the profile/event write slices.)
+        if (HttpContext.Request.Headers.ContainsKey("Precognition"))
+        {
+            await Send.NoContentAsync(ct);
+            return;
+        }
+
         var sub = _currentUser.UserId;
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(
             _db, HttpContext, sub, ct);
@@ -154,7 +164,53 @@ public sealed class SendOfferEndpoint
             }
         }
 
+        // Profession: since Ajeer is dropped, the form's "المهنة" select
+        // always carries an OPPORTUNITY-CATEGORY id in `job_title_id` (the
+        // ajeer→job_titles branch never runs). Store it in its proper FK
+        // column (`job_title_category_id` → opportunity_categories), NOT
+        // `job_title_id` (→ job_titles), which would FK-violate.
+        var professionCategoryId = req.JobTitleCategoryId ?? req.JobTitleId;
+        if (professionCategoryId is { } profId
+            && !await _db.OpportunityCategories.AsNoTracking().AnyAsync(c => c.Id == profId, ct))
+        {
+            await ProblemWriter.WriteAsync(
+                HttpContext,
+                StatusCodes.Status422UnprocessableEntity,
+                OfferErrorCodes.ProfessionNotFound,
+                "Selected profession (opportunity category) does not exist.",
+                ct);
+            return;
+        }
+
         var now = _clock.GetUtcNow();
+        var startDate = req.StartDate ?? DateOnly.FromDateTime(now.AddDays(31).UtcDateTime);
+        var endDate = req.EndDate ?? DateOnly.FromDateTime(now.AddDays(40).UtcDateTime);
+
+        // Salary derivation for a vacancy (daily-wage individual) offer: the
+        // form sends only daily_wage, so number_of_working_days = days(start..
+        // end) and monthly_salary = daily_wage × days (the period total, stored
+        // under monthly_salary). Non-vacancy offers keep the supplied
+        // monthly_salary.
+        //
+        // Day count is INCLUSIVE (+1) to match the frontend wizard
+        // (ReviewStep.tsx: `diff(end,start,'days') + 1`) — the contract we
+        // protect. Legacy's SendOfferService used an exclusive `diffInDays`,
+        // which left the wizard total (6d/900) disagreeing with the stored
+        // value (5d/750); aligning to the frontend keeps them consistent.
+        var isVacancy = await _db.OpportunityCategories
+            .AsNoTracking()
+            .Where(c => c.Id == opportunity.OpportunityCategoryId)
+            .Select(c => (bool?)c.ForVacancy)
+            .FirstOrDefaultAsync(ct) ?? false;
+
+        int? workingDays = req.NumberOfWorkingDays;
+        decimal monthlySalary = req.MonthlySalary ?? 0m;
+        if (isVacancy)
+        {
+            workingDays = Math.Abs(endDate.DayNumber - startDate.DayNumber) + 1;
+            monthlySalary = (req.DailyWage ?? 0) * (decimal)workingDays.Value;
+        }
+
         Offer offer;
         try
         {
@@ -164,17 +220,23 @@ public sealed class SendOfferEndpoint
                 opportunityId: opportunity.Id,
                 applicationId: application.Id,
                 sentByUserId: sub,
-                offerValidityFrom: req.OfferValidityFrom ?? now,
-                offerValidityTo: req.OfferValidityTo ?? now.AddDays(30),
-                startDate: req.StartDate ?? DateOnly.FromDateTime(now.AddDays(31).UtcDateTime),
-                endDate: req.EndDate ?? DateOnly.FromDateTime(now.AddDays(40).UtcDateTime),
-                monthlySalary: req.MonthlySalary ?? 0m,
-                jobTitleId: req.JobTitleId,
-                jobTitleCategoryId: req.JobTitleCategoryId,
+                // Normalize to UTC: the client sends these with a +03:00
+                // (Riyadh) offset, but the column is `timestamptz` and
+                // Npgsql only writes offset-0. ToUniversalTime preserves the
+                // instant. (`now` is already UTC, so it's a no-op there.)
+                offerValidityFrom: (req.OfferValidityFrom ?? now).ToUniversalTime(),
+                offerValidityTo: (req.OfferValidityTo ?? now.AddDays(30)).ToUniversalTime(),
+                startDate: startDate,
+                endDate: endDate,
+                monthlySalary: monthlySalary,
+                // Ajeer job_titles are dropped — the profession is always an
+                // opportunity category, persisted to job_title_category_id.
+                jobTitleId: null,
+                jobTitleCategoryId: professionCategoryId,
                 sponsorEstablishmentId: req.SponsorId,
                 appliedByUserId: application.AppliedByUserId,
                 dailyWage: req.DailyWage,
-                numberOfWorkingDays: req.NumberOfWorkingDays,
+                numberOfWorkingDays: workingDays,
                 laborerCommitments: req.LaborerCommitments,
                 otherDetails: req.OtherDetails);
         }

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
@@ -13,8 +13,8 @@ namespace Matloob.Api.Tests.Opportunities;
 
 /// <summary>
 /// End-to-end journey tests for the full OAO migration. Each test
-/// drives the entire happy path of one journey via HTTP — opportunity
-/// publish → apply → offer → accept → cancel → evaluate — and asserts
+/// drives the entire happy path of one journey via HTTP â€” opportunity
+/// publish â†’ apply â†’ offer â†’ accept â†’ cancel â†’ evaluate â€” and asserts
 /// no Ajeer / contract / invoice / notice_path / contract_path /
 /// show_print_notice key appears in any of the responses along the
 /// way.
@@ -62,7 +62,7 @@ public sealed class OaoEndToEndJourneyTests
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    // -- 1. Opportunity journey: publish → browse → apply → owner-list -----
+    // -- 1. Opportunity journey: publish â†’ browse â†’ apply â†’ owner-list -----
 
     [Fact]
     public async Task OpportunityJourney_PublishBrowseApplyOwnerList_Clean()
@@ -110,7 +110,7 @@ public sealed class OaoEndToEndJourneyTests
         Assert.True(JsonDocument.Parse(applicantsJson).RootElement.DataOf().GetArrayLength() >= 1);
     }
 
-    // -- 2. Offer journey: send → accept ----------------------------------
+    // -- 2. Offer journey: send â†’ accept ----------------------------------
 
     [Fact]
     public async Task OfferJourney_SendAndAccept_Clean()
@@ -141,11 +141,11 @@ public sealed class OaoEndToEndJourneyTests
 
         using var acceptDoc = JsonDocument.Parse(acceptJson);
         var acceptData = acceptDoc.RootElement.DataOf();
-        Assert.Equal("Accepted", acceptData.GetProperty("status").GetString());
+        Assert.Equal("accepted", acceptData.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.String, acceptData.GetProperty("accepted_at").ValueKind);
     }
 
-    // -- 3. Cancellation journey: accept → cancel → approve --------------
+    // -- 3. Cancellation journey: accept â†’ cancel â†’ approve --------------
 
     [Fact]
     public async Task CancellationJourney_AcceptCancelApprove_Clean()
@@ -184,10 +184,10 @@ public sealed class OaoEndToEndJourneyTests
         AssertNoForbiddenKeys(approveJson, "approve cancellation");
 
         using var approveDoc = JsonDocument.Parse(approveJson);
-        Assert.Equal("Canceled", approveDoc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("canceled", approveDoc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
-    // -- 4. Sponsor journey: send-with-sponsor → sponsor-accept ----------
+    // -- 4. Sponsor journey: send-with-sponsor â†’ sponsor-accept ----------
 
     [Fact]
     public async Task SponsorJourney_SendWithSponsor_SponsorAccept_Clean()
@@ -210,7 +210,7 @@ public sealed class OaoEndToEndJourneyTests
         var sendJson = await sendResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(sendJson, "send offer with sponsor");
         var offerId = JsonDocument.Parse(sendJson).RootElement.DataOf().GetProperty("id").GetGuid();
-        Assert.Equal("PendingSponsorApproval",
+        Assert.Equal("pending_sponsor_approval",
             JsonDocument.Parse(sendJson).RootElement.DataOf().GetProperty("status").GetString());
 
         var sponsor = _factory.CreateClientFor(SponsorOwner);
@@ -227,11 +227,11 @@ public sealed class OaoEndToEndJourneyTests
         Assert.Equal(HttpStatusCode.OK, sponsorAcceptResp.StatusCode);
         var acceptJson = await sponsorAcceptResp.Content.ReadAsStringAsync();
         AssertNoForbiddenKeys(acceptJson, "sponsor accept");
-        Assert.Equal("Pending",
+        Assert.Equal("pending",
             JsonDocument.Parse(acceptJson).RootElement.DataOf().GetProperty("status").GetString());
     }
 
-    // -- 5. Evaluation journey: accept → both-sides-evaluate → Completed --
+    // -- 5. Evaluation journey: accept â†’ both-sides-evaluate â†’ Completed --
 
     [Fact]
     public async Task EvaluationJourney_BothSidesEvaluate_OfferCompleted_Clean()

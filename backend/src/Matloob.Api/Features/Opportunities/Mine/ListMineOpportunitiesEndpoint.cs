@@ -21,14 +21,16 @@ namespace Matloob.Api.Features.Opportunities.Mine;
 /// </para>
 ///
 /// <para>
-/// Laravel returned a <c>GroupedOpportunityResource::collection</c>
-/// grouped by status. Q-OAO-GROUPED-RESPONSE (preparation plan default
-/// d): emit a flat list for now; clients can group client-side from the
-/// <c>status</c> field. Documented in the readiness doc.
+/// Returns the legacy <c>GroupedOpportunityResource</c> shape — grouped
+/// by status into <c>data[status][status].{ status_label, status_icon,
+/// card_type, data }</c> — because the public frontend
+/// (<c>OrganizerOpportunities.tsx</c>) reads exactly that double-nested
+/// form. A flat list rendered as index-keyed "untitled" tabs with no
+/// rows. See <see cref="GroupedOpportunitiesResponse"/>.
 /// </para>
 /// </summary>
 public sealed class ListMineOpportunitiesEndpoint
-    : EndpointWithoutRequest<IReadOnlyList<OpportunityResponse>>
+    : EndpointWithoutRequest<GroupedOpportunitiesResponse>
 {
     private readonly AppDbContext _db;
     private readonly ICurrentUser _currentUser;
@@ -46,7 +48,7 @@ public sealed class ListMineOpportunitiesEndpoint
             "/api/v1/establishments/{establishmentId}/opportunities");
         Policies(MatloobPolicies.User);
         Description(b => b
-            .Produces<IReadOnlyList<OpportunityResponse>>(StatusCodes.Status200OK)
+            .Produces<GroupedOpportunitiesResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -104,7 +106,43 @@ public sealed class ListMineOpportunitiesEndpoint
             .Take(500)
             .ToListAsync(ct);
 
-        var responses = new List<OpportunityResponse>(opportunities.Count);
+        // Batch-load the owning events so each card can render
+        // `opportunity.event.name` (the frontend dereferences it unguarded).
+        var eventIds = opportunities.Select(o => o.EventId).Distinct().ToList();
+        var eventsById = await _db.Events
+            .AsNoTracking()
+            .Where(e => eventIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, ct);
+
+        // Batch-load applications (soft-delete filtered globally) so each
+        // card can render `applicants.length` — the legacy owner list
+        // eager-loaded `applicants` for exactly this. Avatars are off, so a
+        // minimal ref per application is enough.
+        var opportunityIds = opportunities.Select(o => o.Id).ToList();
+        var applicantsByOpp = (await _db.OpportunityApplications
+                .AsNoTracking()
+                .Where(a => opportunityIds.Contains(a.OpportunityId))
+                .Select(a => new
+                {
+                    a.OpportunityId,
+                    Ref = new OpportunityApplicantRef
+                    {
+                        Id = a.Id,
+                        ApplicantUserId = a.ApplicantUserId,
+                        ApplicantEstablishmentId = a.ApplicantEstablishmentId,
+                    },
+                })
+                .ToListAsync(ct))
+            .GroupBy(a => a.OpportunityId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<object>)g.Select(x => (object)x.Ref).ToList());
+
+        var active = new List<OpportunityResponse>();
+        var upcoming = new List<OpportunityResponse>();
+        var drafted = new List<OpportunityResponse>();
+        var ended = new List<OpportunityResponse>();
+
         foreach (var opportunity in opportunities)
         {
             var bundle = await OpportunityReadQueries.LoadSidecarAsync(
@@ -112,7 +150,9 @@ public sealed class ListMineOpportunitiesEndpoint
                 subClaim: null,
                 establishmentApplicantId: establishmentId,
                 ct);
-            responses.Add(OpportunityReadMapper.Map(
+            eventsById.TryGetValue(opportunity.EventId, out var eventEntity);
+            var applicants = applicantsByOpp.GetValueOrDefault(opportunity.Id);
+            var response = OpportunityReadMapper.Map(
                 opportunity,
                 bundle.Category,
                 bundle.Issuer,
@@ -120,11 +160,53 @@ public sealed class ListMineOpportunitiesEndpoint
                 bundle.SuccessCriteria,
                 bundle.Uploads,
                 bundle.ApplicantsCount,
-                bundle.IsApplied));
+                bundle.IsApplied,
+                eventEntity,
+                applicants);
+
+            switch (opportunity.Status)
+            {
+                case Matloob.Domain.Opportunities.OpportunityStatus.Active:
+                    active.Add(response);
+                    break;
+                case Matloob.Domain.Opportunities.OpportunityStatus.Upcoming:
+                    upcoming.Add(response);
+                    break;
+                case Matloob.Domain.Opportunities.OpportunityStatus.Drafted:
+                    drafted.Add(response);
+                    break;
+                // Finished collapses onto the manual-ended bucket (legacy
+                // labelled both "finished").
+                case Matloob.Domain.Opportunities.OpportunityStatus.Ended:
+                case Matloob.Domain.Opportunities.OpportunityStatus.Finished:
+                    ended.Add(response);
+                    break;
+            }
         }
 
-        await Send.OkAsync(responses, ct);
+        var grouped = new GroupedOpportunitiesResponse
+        {
+            Active = Group("active", "Active", "active", active),
+            Upcoming = Group("upcoming", "Upcoming", "upcoming", upcoming),
+            Drafted = Group("drafted", "Drafted", "drafted", drafted),
+            Ended = Group("ended", "Finished", "finished", ended),
+        };
+
+        await Send.OkAsync(grouped, ct);
     }
+
+    private static Dictionary<string, OpportunityGroup> Group(
+        string statusKey, string label, string cardType, IReadOnlyList<OpportunityResponse> data)
+        => new()
+        {
+            [statusKey] = new OpportunityGroup
+            {
+                StatusLabel = label,
+                StatusIcon = string.Empty,
+                CardType = cardType,
+                Data = data,
+            },
+        };
 
     private static Guid? ParseGuid(string? value) =>
         Guid.TryParse(value, out var g) ? g : null;

@@ -11,19 +11,18 @@ namespace Matloob.Api.Features.Opportunities.EstablishmentBrowse;
 /// <summary>
 /// <c>GET /api/establishments/opportunities/{id}</c> (Laravel-compat)
 /// and <c>GET /api/v1/establishments/{establishmentId}/browse/opportunities/{id}</c>
-/// (canonical) — detail page for an opportunity an establishment is
-/// considering applying to.
+/// (canonical) — opportunity detail.
 ///
 /// <para>
-/// Returns 404 for:
+/// Mirrors the legacy <c>Establishments\Opportunities\OpportunityController::show</c>,
+/// which is a plain route-model-bind: it returns ANY opportunity by id
+/// regardless of status, category, or ownership. The frontend uses this
+/// single endpoint both for the applying-establishment browse detail AND
+/// for the organizer viewing their OWN opportunity
+/// (<c>dashboard/opportunities/[slug]</c>), so the only 404 is
+/// "no such opportunity". (The list/<c>index</c> endpoint is where the
+/// browsable/own-exclusion filters live.)
 /// </para>
-/// <list type="bullet">
-///   <item>Opportunities not in a browsable status (Upcoming/Active).</item>
-///   <item>Opportunities in <c>for_vacancy = true</c> categories
-///     (those belong on the worker-side route).</item>
-///   <item>Opportunities created by the resolved establishment itself
-///     (cannot apply to your own).</item>
-/// </list>
 /// </summary>
 public sealed class GetEstablishmentBrowseOpportunityEndpoint
     : EndpointWithoutRequest<OpportunityResponse>
@@ -74,22 +73,13 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             }
         }
 
+        // Legacy `show` is a plain route-model-bind: any opportunity by id,
+        // no status/category/ownership filter. 404 only when missing.
         var oppId = Route<Guid>("id");
         var opportunity = await _db.Opportunities
             .AsNoTracking()
             .FirstOrDefaultAsync(o => o.Id == oppId, ct);
-        if (opportunity is null
-            || !OpportunityReadQueries.BrowsableStatuses.Contains(opportunity.Status)
-            || opportunity.IssuerEstablishmentId == establishmentId.Value)
-        {
-            await Send.NotFoundAsync(ct);
-            return;
-        }
-
-        var category = await _db.OpportunityCategories
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == opportunity.OpportunityCategoryId, ct);
-        if (category is null || category.ForVacancy)
+        if (opportunity is null)
         {
             await Send.NotFoundAsync(ct);
             return;
@@ -101,6 +91,11 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             establishmentApplicantId: establishmentId,
             ct);
 
+        // The detail page dereferences `opportunity.event.*`, so hydrate it.
+        var eventEntity = await _db.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == opportunity.EventId, ct);
+
         var response = OpportunityReadMapper.Map(
             opportunity,
             bundle.Category,
@@ -109,7 +104,8 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             bundle.SuccessCriteria,
             bundle.Uploads,
             bundle.ApplicantsCount,
-            bundle.IsApplied);
+            bundle.IsApplied,
+            eventEntity);
         await Send.OkAsync(response, ct);
     }
 }

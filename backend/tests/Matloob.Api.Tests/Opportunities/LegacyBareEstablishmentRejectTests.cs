@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -72,7 +72,7 @@ public sealed class LegacyBareEstablishmentRejectTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
 
         // Confirm DB row has null reason on the persisted offer (the
         // bare-POST path doesn't supply one).

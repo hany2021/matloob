@@ -77,13 +77,28 @@ public sealed class MineOpportunityTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var names = doc.RootElement.DataOf().EnumerateArray()
-            .Select(e => e.GetProperty("name").GetString()!).ToList();
+        var grouped = doc.RootElement.DataOf();
+        var names = AllNames(grouped);
 
-        Assert.Contains("Own draft", names);
-        Assert.Contains("Own upcoming", names);
-        Assert.Contains("Own ended", names);
+        // Grouped into the legacy double-nested shape, by status.
+        Assert.Contains("Own draft", GroupNames(grouped, "drafted"));
+        Assert.Contains("Own upcoming", GroupNames(grouped, "upcoming"));
+        Assert.Contains("Own ended", GroupNames(grouped, "ended"));
         Assert.DoesNotContain("Foreign", names);
+    }
+
+    /// <summary>Names inside one status group (<c>data[status][status].data</c>).</summary>
+    private static List<string> GroupNames(JsonElement grouped, string status) =>
+        grouped.GetProperty(status).GetProperty(status).GetProperty("data")
+            .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();
+
+    /// <summary>Names across every status group.</summary>
+    private static List<string> AllNames(JsonElement grouped)
+    {
+        var all = new List<string>();
+        foreach (var status in new[] { "active", "upcoming", "drafted", "ended" })
+            all.AddRange(GroupNames(grouped, status));
+        return all;
     }
 
     [Fact]
@@ -113,10 +128,34 @@ public sealed class MineOpportunityTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
 
-        var names = doc.RootElement.DataOf().EnumerateArray()
-            .Select(e => e.GetProperty("name").GetString()!).ToList();
+        var names = AllNames(doc.RootElement.DataOf());
         Assert.Contains("F-ended", names);
         Assert.DoesNotContain("F-upcoming", names);
+    }
+
+    [Fact]
+    public async Task List_Owner_OpportunityCarriesApplicantsArrayAndCount()
+    {
+        // The frontend card reads `applicants.length` for عدد المتقدمين
+        // (not applicants_count), so the owner list must emit the
+        // applicants array, not just the count.
+        var opp = await OaoHelpers.SeedOpportunityAsync(_factory, _ownEstablishment,
+            name: "With applicant", status: OpportunityStatus.Upcoming);
+        await OaoHelpers.SeedApplicationAsync(_factory, opp, applicantUserId: "oao-applicant-1");
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.GetAsync(
+            $"/api/v1/establishments/{_ownEstablishment}/opportunities");
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+
+        var card = doc.RootElement.DataOf()
+            .GetProperty("upcoming").GetProperty("upcoming").GetProperty("data")
+            .EnumerateArray()
+            .Single(e => e.GetProperty("name").GetString() == "With applicant");
+
+        Assert.Equal(1, card.GetProperty("applicants").GetArrayLength());
+        Assert.Equal(1, card.GetProperty("applicants_count").GetInt32());
     }
 
     [Fact]

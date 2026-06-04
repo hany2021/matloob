@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Matloob.Api.Infrastructure.Persistence;
@@ -11,11 +11,11 @@ namespace Matloob.Api.Tests.Opportunities;
 
 /// <summary>
 /// API-driven QA golden path for the hiring lifecycle, mapped to the business
-/// QA reference (matloob-business-qa-v2.md §6). Each test is labelled with its
-/// TC id and asserts the doc's expected result — except where the implementation
+/// QA reference (matloob-business-qa-v2.md Â§6). Each test is labelled with its
+/// TC id and asserts the doc's expected result â€” except where the implementation
 /// is known to diverge, which is asserted-as-actual and called out in a comment
 /// (those become the QA findings). Phase order follows the dependency chain:
-/// opportunity → apply → offer → accept → cancel → evaluate.
+/// opportunity â†’ apply â†’ offer â†’ accept â†’ cancel â†’ evaluate.
 /// </summary>
 public sealed class QaLifecycleGoldenPathTests
     : IClassFixture<OpportunitiesApiFactory>, IAsyncLifetime
@@ -42,9 +42,9 @@ public sealed class QaLifecycleGoldenPathTests
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    // ===== Phase 2 — Events & Opportunities ==================================
+    // ===== Phase 2 â€” Events & Opportunities ==================================
 
-    /// <summary>TC-E03 / BR-02: an opportunity must be tied to an event — a
+    /// <summary>TC-E03 / BR-02: an opportunity must be tied to an event â€” a
     /// create with no event reference is rejected.</summary>
     [Fact]
     public async Task TC_E03_CreateOpportunityWithoutEvent_IsBlocked()
@@ -86,7 +86,7 @@ public sealed class QaLifecycleGoldenPathTests
         Assert.True(JsonDocument.Parse(applicants).RootElement.DataOf().GetArrayLength() >= 1);
     }
 
-    /// <summary>Permission (§4.4): an individual cannot send a job offer.</summary>
+    /// <summary>Permission (Â§4.4): an individual cannot send a job offer.</summary>
     [Fact]
     public async Task TC_PERM_IndividualCannotSendOffer()
     {
@@ -102,10 +102,10 @@ public sealed class QaLifecycleGoldenPathTests
             $"Expected 404/403, got {(int)resp.StatusCode}.");
     }
 
-    // ===== Phase 3 — Offers & Contracts =====================================
+    // ===== Phase 3 â€” Offers & Contracts =====================================
 
     /// <summary>TC-O01 + TC-O02 + TC-O03: organizer sends an offer to an applicant
-    /// → arrives Pending; single contract type (no type field required); no
+    /// â†’ arrives Pending; single contract type (no type field required); no
     /// saudization/Ajeer/contract keys in the payload.</summary>
     [Fact]
     public async Task TC_O01_O02_O03_OrganizerSendsOffer_Pending_Clean()
@@ -115,7 +115,7 @@ public sealed class QaLifecycleGoldenPathTests
 
         using var doc = JsonDocument.Parse(sendJson);
         var data = doc.RootElement.DataOf();
-        Assert.Equal("Pending", data.GetProperty("status").GetString());      // TC-O01
+        Assert.Equal("pending", data.GetProperty("status").GetString());      // TC-O01
         Assert.NotEqual(Guid.Empty, offerId);
 
         // TC-O02 (single contract type): no contract-type selector concept.
@@ -129,7 +129,7 @@ public sealed class QaLifecycleGoldenPathTests
         }
     }
 
-    /// <summary>TC-O04 / BR-15: the individual accepts the offer → it becomes the
+    /// <summary>TC-O04 / BR-15: the individual accepts the offer â†’ it becomes the
     /// active contract (status Accepted, accepted_at stamped).</summary>
     [Fact]
     public async Task TC_O04_IndividualAcceptsOffer_BecomesActiveContract()
@@ -142,12 +142,12 @@ public sealed class QaLifecycleGoldenPathTests
 
         using var doc = JsonDocument.Parse(await accept.Content.ReadAsStringAsync());
         var data = doc.RootElement.DataOf();
-        Assert.Equal("Accepted", data.GetProperty("status").GetString());
+        Assert.Equal("accepted", data.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.String, data.GetProperty("accepted_at").ValueKind);
     }
 
-    /// <summary>TC-O06 / BR-06: an individual cannot cancel directly — they open a
-    /// cancellation request with a reason (status → CancellationRequested).</summary>
+    /// <summary>TC-O06 / BR-06: an individual cannot cancel directly â€” they open a
+    /// cancellation request with a reason (status â†’ CancellationRequested).</summary>
     [Fact]
     public async Task TC_O06_IndividualRequestsCancellation_NotDirectCancel()
     {
@@ -172,8 +172,8 @@ public sealed class QaLifecycleGoldenPathTests
 
     /// <summary>TC-O05 / BR-07: the organizer cancels an individual's contract with
     /// a reason. (Documents actual behaviour: the establishment "cancel" opens the
-    /// two-step cancellation flow → CancellationRequested, awaiting the other
-    /// party — same mechanism as the user side.)</summary>
+    /// two-step cancellation flow â†’ CancellationRequested, awaiting the other
+    /// party â€” same mechanism as the user side.)</summary>
     [Fact]
     public async Task TC_O05_OrganizerCancelsContractWithReason()
     {
@@ -199,9 +199,9 @@ public sealed class QaLifecycleGoldenPathTests
             $"Unexpected status after organizer cancel: {offer.Status}.");
     }
 
-    // ===== Phase 4 — Evaluation =============================================
+    // ===== Phase 4 â€” Evaluation =============================================
 
-    /// <summary>TC-V01: after acceptance both parties evaluate → offer Completed.</summary>
+    /// <summary>TC-V01: after acceptance both parties evaluate â†’ offer Completed.</summary>
     [Fact]
     public async Task TC_V01_BothSidesEvaluate_OfferCompleted()
     {
@@ -224,7 +224,7 @@ public sealed class QaLifecycleGoldenPathTests
     }
 
     /// <summary>
-    /// TC-V02 — QA FINDING / DIVERGENCE. The doc (BR-13, inferred) says evaluation
+    /// TC-V02 â€” QA FINDING / DIVERGENCE. The doc (BR-13, inferred) says evaluation
     /// happens only AFTER the contract ends. The implementation allows evaluating
     /// an offer that is merely <c>Accepted</c> (job not started/ended). This test
     /// asserts the ACTUAL behaviour (allowed) so it is recorded; the divergence is

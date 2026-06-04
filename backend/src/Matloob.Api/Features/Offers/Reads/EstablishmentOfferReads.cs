@@ -51,11 +51,14 @@ public sealed class ListEstablishmentReceivedOffersEndpoint
 
         var now = _clock.GetUtcNow();
         var offers = await (
-            from o in _db.Offers.AsNoTracking()
-            join a in _db.OpportunityApplications.AsNoTracking() on o.ApplicationId equals a.Id
-            where a.ApplicantEstablishmentId == establishmentId.Value
-            orderby o.CreatedAt descending
-            select o).Take(200).ToListAsync(ct);
+                from o in _db.Offers.AsNoTracking()
+                join a in _db.OpportunityApplications.AsNoTracking() on o.ApplicationId equals a.Id
+                where a.ApplicantEstablishmentId == establishmentId.Value
+                select o)
+            .ApplyFilters(_db, HttpContext)
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(200)
+            .ToListAsync(ct);
 
         var responses = new List<OfferResponse>(offers.Count);
         foreach (var offer in offers)
@@ -170,6 +173,7 @@ public sealed class ListEstablishmentSentOffersEndpoint
         var offers = await _db.Offers
             .AsNoTracking()
             .Where(o => o.SenderEstablishmentId == establishmentId.Value)
+            .ApplyFilters(_db, HttpContext)
             .OrderByDescending(o => o.CreatedAt)
             .Take(200)
             .ToListAsync(ct);

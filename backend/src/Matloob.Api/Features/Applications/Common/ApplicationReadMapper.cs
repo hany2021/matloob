@@ -1,4 +1,6 @@
+using Matloob.Api.Features.Establishments.Profile;
 using Matloob.Api.Features.Opportunities.Common;
+using Matloob.Api.Features.Profile.Show;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Applications;
 using Matloob.Domain.Establishments;
@@ -47,7 +49,7 @@ internal static class ApplicationReadMapper
         };
     }
 
-    private static async Task<(string ApplierType, ApplicationApplierDto Applier)> LoadApplierAsync(
+    private static async Task<(string ApplierType, object? Applier)> LoadApplierAsync(
         AppDbContext db,
         OpportunityApplication application,
         CancellationToken ct)
@@ -57,12 +59,12 @@ internal static class ApplicationReadMapper
             var u = await db.Users
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.IdentityId == sub, ct);
-            return (ApplierTypeUser, new ApplicationApplierDto
-            {
-                Id = sub,
-                Name = u?.Name,
-                Email = u?.Email,
-            });
+            // Full individual profile (UserResource), matching the
+            // frontend's IndividualProfile the applicant page reads.
+            object applier = u is null
+                ? new ApplicationApplierDto { Id = sub }
+                : await ProfileReadMapper.BuildAsync(db, u, ct);
+            return (ApplierTypeUser, applier);
         }
 
         if (application.ApplicantEstablishmentId is { } estId)
@@ -70,12 +72,11 @@ internal static class ApplicationReadMapper
             var e = await db.Establishments
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == estId, ct);
-            return (ApplierTypeOrganization, new ApplicationApplierDto
-            {
-                Id = estId.ToString(),
-                Name = e?.Name,
-                Email = e?.Email,
-            });
+            // Full establishment profile, matching EstablishmentProfile.
+            object applier = e is null
+                ? new ApplicationApplierDto { Id = estId.ToString() }
+                : await EstablishmentProfileReadMapper.BuildAsync(db, e, ct);
+            return (ApplierTypeOrganization, applier);
         }
 
         // Domain CHECK guarantees one of the two is set, but keep a

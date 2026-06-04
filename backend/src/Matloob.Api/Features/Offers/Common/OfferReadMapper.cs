@@ -40,10 +40,15 @@ internal static class OfferReadMapper
         {
             var bundle = await OpportunityReadQueries.LoadSidecarAsync(
                 db, opportunity, subClaim: null, establishmentApplicantId: null, ct);
+            // The offer detail pages dereference `opportunity.event.name`
+            // unguarded, so hydrate the owning event.
+            var oppEvent = await db.Events
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == opportunity.EventId, ct);
             opportunityResponse = OpportunityReadMapper.Map(
                 opportunity, bundle.Category, bundle.Issuer, bundle.Nationality,
                 bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount,
-                bundle.IsApplied);
+                bundle.IsApplied, oppEvent);
         }
 
         OpportunityApplicationResponse? applicantResponse = null;
@@ -53,12 +58,23 @@ internal static class OfferReadMapper
                 db, application, opportunityResponse, ct);
         }
 
+        // Ajeer job_title (legacy; never set now that Ajeer is dropped).
         JobTitle? jobTitle = null;
         if (offer.JobTitleId is { } jtId)
         {
             jobTitle = await db.JobTitles
                 .AsNoTracking()
                 .FirstOrDefaultAsync(j => j.Id == jtId, ct);
+        }
+
+        // Matloob profession = opportunity category. The frontend reads
+        // `offer.job_title.title`, so project the category under job_title.
+        OpportunityCategory? jobTitleCategory = null;
+        if (offer.JobTitleCategoryId is { } jtcId)
+        {
+            jobTitleCategory = await db.OpportunityCategories
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == jtcId, ct);
         }
 
         OfferCancellationRequest? cancellation = await db.OfferCancellationRequests
@@ -87,18 +103,25 @@ internal static class OfferReadMapper
                 },
             Applicant = applicantResponse,
             Opportunity = opportunityResponse,
-            JobTitle = jobTitle is null
-                ? null
-                : new OfferJobTitleDto
+            JobTitle = jobTitleCategory is not null
+                ? new OfferJobTitleDto
                 {
-                    Id = jobTitle.Id,
-                    Name = jobTitle.Name,
-                },
+                    Id = jobTitleCategory.Id,
+                    Title = jobTitleCategory.Title,
+                    Name = jobTitleCategory.Title,
+                }
+                : jobTitle is null
+                    ? null
+                    : new OfferJobTitleDto
+                    {
+                        Id = jobTitle.Id,
+                        Name = jobTitle.Name,
+                    },
             MonthlySalary = offer.MonthlySalary,
             DailyWage = offer.DailyWage,
             NumberOfWorkingDays = offer.NumberOfWorkingDays,
             Currency = offer.Currency.ToString(),
-            Status = offer.Status.ToString(),
+            Status = offer.Status.ToWire(),
             StatusColor = null,
             StatusLabel = null,
             OfferValidityFrom = offer.OfferValidityFrom?.ToString("yyyy-MM-ddTHH:mm:sszzz"),

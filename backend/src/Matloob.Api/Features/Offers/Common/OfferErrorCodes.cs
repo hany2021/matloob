@@ -17,4 +17,5 @@ internal static class OfferErrorCodes
     public const string ForbiddenForCaller           = "forbidden_for_caller";
     public const string OpenCancellationRequestExists = "open_cancellation_request_exists";
     public const string NoOpenCancellationRequest    = "no_open_cancellation_request";
+    public const string ProfessionNotFound           = "profession_not_found";
 }

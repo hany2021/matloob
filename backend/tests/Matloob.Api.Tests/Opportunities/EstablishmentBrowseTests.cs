@@ -164,15 +164,23 @@ public sealed class EstablishmentBrowseTests
     }
 
     [Fact]
-    public async Task Show_OwnOpportunity_Returns404()
+    public async Task Show_OwnOpportunity_Returns200()
     {
+        // Legacy `OpportunityController::show` is a plain route-model-bind:
+        // no ownership filter. The organizer's own opportunity detail page
+        // (dashboard/opportunities/[slug]) reads this very endpoint, so own
+        // opportunities must resolve, not 404.
         var ownOpp = await OaoHelpers.SeedOpportunityAsync(_factory, _applyingEstablishmentId,
             name: "Own one", forVacancy: false);
 
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
         var response = await client.GetAsync(
             $"/api/v1/establishments/{_applyingEstablishmentId}/browse/opportunities/{ownOpp}");
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.Equal(ownOpp, doc.RootElement.DataOf().GetProperty("id").GetGuid());
     }
 
     // -- categories --------------------------------------------------------

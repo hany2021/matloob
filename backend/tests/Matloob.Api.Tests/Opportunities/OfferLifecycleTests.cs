@@ -85,7 +85,7 @@ public sealed class OfferLifecycleTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         var data = doc.RootElement.DataOf();
-        Assert.Equal("Pending", data.GetProperty("status").GetString());
+        Assert.Equal("pending", data.GetProperty("status").GetString());
         // No Ajeer/contract/invoice fields.
         Assert.False(data.TryGetProperty("contract", out _));
         Assert.False(data.TryGetProperty("contract_type", out _));
@@ -94,6 +94,164 @@ public sealed class OfferLifecycleTests
         var outboxCount = await OaoHelpers.CountOutboxEventsAsync(
             _factory, OfferEventTypes.Created);
         Assert.True(outboxCount > 0);
+    }
+
+    [Fact]
+    public async Task SentOffers_StatusFilter_ExcludesNonMatchingStatuses()
+    {
+        // The organizer's offer screen filters by حالة العقد (status[]).
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var send = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new { applicant_id = _workerApplicationId, monthly_salary = 6000m });
+        Assert.Equal(HttpStatusCode.Created, send.StatusCode);
+        using var sendDoc = JsonDocument.Parse(await send.Content.ReadAsStringAsync());
+        var offerId = sendDoc.RootElement.DataOf().GetProperty("id").GetGuid();
+
+        // status=rejected → the new Pending offer must be filtered OUT.
+        Assert.DoesNotContain(offerId, await SentOfferIds(client, "?status=rejected"));
+        // status=pending → it must appear.
+        Assert.Contains(offerId, await SentOfferIds(client, "?status=pending"));
+        // No filter → it must appear.
+        Assert.Contains(offerId, await SentOfferIds(client, ""));
+    }
+
+    private async Task<List<Guid>> SentOfferIds(HttpClient client, string query)
+    {
+        var json = await client.GetStringAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/sent-offers{query}");
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.DataOf().EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+    }
+
+    [Fact]
+    public async Task Send_VacancyDailyWage_ComputesMonthlySalaryAndWorkingDays()
+    {
+        // For a vacancy opportunity the form sends only daily_wage (+ dates);
+        // the API derives number_of_working_days = days(start..end) and
+        // monthly_salary = daily_wage × days (legacy SendOfferService).
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new
+            {
+                applicant_id = _workerApplicationId,
+                daily_wage = 150,
+                start_date = "2026-06-20",
+                end_date = "2026-06-25",
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
+        // Inclusive day count (matches the wizard): 25 - 20 + 1 = 6 working
+        // days; 150 × 6 = 900.
+        Assert.Equal(6, data.GetProperty("number_of_working_days").GetInt32());
+        Assert.Equal(900m, data.GetProperty("monthly_salary").GetDecimal());
+        Assert.Equal(150, data.GetProperty("daily_wage").GetInt32());
+    }
+
+    [Fact]
+    public async Task Send_PrecognitionPing_Returns204_AndCreatesNoOffer()
+    {
+        // The offer form's step-1 "next" sends a Precognition validate-only
+        // ping. It must NOT persist an offer (else the real send 409s).
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var req = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send")
+        {
+            Content = JsonContent.Create(new
+            {
+                applicant_id = _workerApplicationId,
+                monthly_salary = 6000m,
+            }),
+        };
+        req.Headers.Add("Precognition", "true");
+        var response = await client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // A subsequent real send must still succeed (no offer was created).
+        var real = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new { applicant_id = _workerApplicationId, monthly_salary = 6000m });
+        Assert.Equal(HttpStatusCode.Created, real.StatusCode);
+    }
+
+    [Fact]
+    public async Task Send_ProfessionCategoryId_RoutedToCategoryFk_NotJobTitle()
+    {
+        // The offer form sends an opportunity-CATEGORY id in `job_title_id`
+        // (the ajeer→job_titles branch is dead since Ajeer is dropped). It
+        // must persist to job_title_category_id (its real FK), not
+        // job_title_id (→ job_titles, which would FK-violate), and round-trip
+        // as offer.job_title.title.
+        Guid categoryId;
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            categoryId = (await db.OpportunityCategories
+                .FirstAsync(c => c.ParentId != null && !c.IsOther)).Id;
+        }
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new { applicant_id = _workerApplicationId, monthly_salary = 6000m, job_title_id = categoryId });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
+        var id = data.GetProperty("id").GetGuid();
+        var jobTitle = data.GetProperty("job_title");
+        Assert.Equal(categoryId, jobTitle.GetProperty("id").GetGuid());
+        Assert.False(string.IsNullOrEmpty(jobTitle.GetProperty("title").GetString()));
+
+        var offer = await OaoHelpers.LoadOfferAsync(_factory, id);
+        Assert.NotNull(offer);
+        Assert.Null(offer!.JobTitleId);
+        Assert.Equal(categoryId, offer.JobTitleCategoryId);
+    }
+
+    [Fact]
+    public async Task Send_UnknownProfession_Returns422()
+    {
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new { applicant_id = _workerApplicationId, monthly_salary = 6000m, job_title_id = Guid.NewGuid() });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Send_NonUtcValidityOffset_PersistsAsUtc()
+    {
+        // The frontend posts offer_validity_* with a +03:00 (Riyadh) offset.
+        // Npgsql rejects a non-UTC DateTimeOffset on a `timestamptz` column
+        // (500), so the endpoint must normalize to UTC before persisting.
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/offers/send",
+            new
+            {
+                applicant_id = _workerApplicationId,
+                monthly_salary = 6000m,
+                offer_validity_from = "2026-06-04T00:00:00+03:00",
+                offer_validity_to = "2026-07-04T00:00:00+03:00",
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var id = doc.RootElement.DataOf().GetProperty("id").GetGuid();
+
+        var offer = await OaoHelpers.LoadOfferAsync(_factory, id);
+        Assert.NotNull(offer);
+        Assert.Equal(TimeSpan.Zero, offer!.OfferValidityFrom!.Value.Offset);
+        Assert.Equal(TimeSpan.Zero, offer.OfferValidityTo!.Value.Offset);
     }
 
     [Fact]
@@ -113,7 +271,7 @@ public sealed class OfferLifecycleTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         var data = doc.RootElement.DataOf();
-        Assert.Equal("PendingSponsorApproval", data.GetProperty("status").GetString());
+        Assert.Equal("pending_sponsor_approval", data.GetProperty("status").GetString());
         Assert.True(data.GetProperty("is_pending_sponsor_approval").GetBoolean());
     }
 
@@ -199,7 +357,7 @@ public sealed class OfferLifecycleTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         var data = doc.RootElement.DataOf();
-        Assert.Equal("Accepted", data.GetProperty("status").GetString());
+        Assert.Equal("accepted", data.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.String, data.GetProperty("accepted_at").ValueKind);
     }
 
@@ -233,7 +391,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- cancellation -------------------------------------------------------
@@ -262,7 +420,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await approveResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Canceled", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("canceled", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -285,7 +443,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await rejectResp.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Accepted", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("accepted", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- sponsor flow -------------------------------------------------------
@@ -315,7 +473,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("Pending", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("pending", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     [Fact]
@@ -344,7 +502,7 @@ public sealed class OfferLifecycleTests
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-        Assert.Equal("SponsorRejected", doc.RootElement.DataOf().GetProperty("status").GetString());
+        Assert.Equal("sponsor_rejected", doc.RootElement.DataOf().GetProperty("status").GetString());
     }
 
     // -- helpers ------------------------------------------------------------

@@ -115,11 +115,14 @@ public sealed class OpportunityResponse
     public string? StatusIcon { get; init; }
 
     /// <summary>
-    /// Event object — null placeholder until the Event slice is
-    /// migrated. Legacy callers tolerate null gracefully.
+    /// The owning event (minimal projection). The public frontend's
+    /// opportunity cards dereference <c>opportunity.event.name</c>
+    /// unconditionally, so this must be non-null on any list/show the UI
+    /// renders. Populated by the read endpoints that load the event; null
+    /// only where the event isn't hydrated.
     /// </summary>
     [JsonPropertyName("event")]
-    public object? Event { get; init; }
+    public OpportunityEventDto? Event { get; init; }
 
     [JsonPropertyName("opportunity_category")]
     public OpportunityCategoryDto? OpportunityCategory { get; init; }
@@ -159,6 +162,40 @@ public sealed class OpportunityResponse
 
     [JsonPropertyName("is_applied")]
     public bool? IsApplied { get; init; }
+}
+
+/// <summary>
+/// Minimal projection of the opportunity's owning event. Mirrors the
+/// fields the public frontend's <c>Event</c> type exposes that the
+/// opportunity cards actually read (<c>name</c>, <c>lat</c>, <c>lon</c>);
+/// the rest are emitted for parity with the Laravel <c>EventResource</c>
+/// nested under each opportunity.
+/// </summary>
+public sealed class OpportunityEventDto
+{
+    [JsonPropertyName("id")]
+    public Guid Id { get; init; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    [JsonPropertyName("start_date")]
+    public string? StartDate { get; init; }
+
+    [JsonPropertyName("end_date")]
+    public string? EndDate { get; init; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
+    [JsonPropertyName("lat")]
+    public string? Lat { get; init; }
+
+    [JsonPropertyName("lon")]
+    public string? Lon { get; init; }
+
+    [JsonPropertyName("location_title")]
+    public string? LocationTitle { get; init; }
 }
 
 /// <summary>

@@ -178,6 +178,36 @@ public sealed class EstablishmentApplicationReadTests
     }
 
     [Fact]
+    public async Task MineApplicant_Show_UserApplier_CarriesFullProfile()
+    {
+        // The applicant detail page reads applier as the full
+        // IndividualProfile (region, skills, experiences, bank_account,
+        // profile_complete_percentage…). A minimal {id,name,email} applier
+        // renders the page empty (N/A everywhere). Assert the rich shape.
+        var opp = await OaoHelpers.SeedOpportunityAsync(_factory, _ownEstablishment,
+            name: "Rich applier");
+        var app = await OaoHelpers.SeedApplicationAsync(_factory, opp,
+            applicantUserId: OaoHelpers.Worker.Sub);
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.GetAsync(
+            $"/api/v1/establishments/{_ownEstablishment}/applicants/{app}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
+        Assert.Equal("user", data.GetProperty("applier_type").GetString());
+
+        var applier = data.GetProperty("applier");
+        // Keys that exist only on the full UserResource, never on the old
+        // minimal {id,name,email} applier DTO.
+        Assert.True(applier.TryGetProperty("profile_complete_percentage", out _));
+        Assert.True(applier.TryGetProperty("skills", out _));
+        Assert.True(applier.TryGetProperty("experiences", out _));
+    }
+
+    [Fact]
     public async Task MineApplicant_Show_ForeignOpportunity_Returns404()
     {
         var foreignOpp = await OaoHelpers.SeedOpportunityAsync(_factory, _publisherEstablishment,
