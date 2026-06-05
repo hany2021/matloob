@@ -246,6 +246,13 @@ The 5 `PATCH establishments/me/profile/*` endpoints the frontend called but the 
 - **Envelope + 422** are global; new endpoints get them for free.
 - **EF migrations:** `dotnet ef migrations add` only, never `--no-build`.
 
+### 🔎 Opportunity-creation review (all types) — 1 fixed, others flagged
+Reviewed opp creation for vacancy (`for_vacancy=true`) and non-vacancy/B2B types, across the wizard step-4 (`EventOpportunitiesSupport`) and standalone (`CreateOpportunityEndpoint`) paths, vs the frontend contract + legacy parity.
+- ✅ **FIXED (`1d4a6f1`): `working_hours_type` was silently dropped on every opportunity.** The `WorkingHoursType` enum was `Fixed/Flexible/Shifts` but the frontend/legacy use `full_time/part_time`, so `Enum.TryParse` failed → null on create, wrong token on read. Now `FullTime/PartTime` + `WorkingHoursTypeWire` (ToWire/Parse), EF stores the wire token, round-trip test added.
+- ⚠️ **OPEN — missing type-aware *required* validation** (the laravel-precognition forms rely on the SERVER to enforce these, so omissions aren't blocked client-side): legacy `RequiredForVacancy` made **`monthly_salary` required for vacancy**, and `RequiredForOpportunity` made **`success_criteria` required for non-vacancy** — neither is enforced in `EventOpportunitiesSupport.ValidateAsync`. (Success-criteria *persistence* is correctly gated to non-vacancy.)
+- ⚠️ **OPEN — opportunity date-bounds not validated:** legacy `ValidOpportunityStartDate`/`EndDate` required opp dates within the event range and `end > start`; the new code only checks each date parses (`end >= start` is enforced only by a domain `ArgumentException` → likely a 500, not a clean 422; event-bounds unchecked).
+- 🟡 Minor parity divergences (more permissive than legacy, low impact): description `min:100`→`min:10`, name `max:30`→`max:120`; the JSON (non-multipart) create path likely drops `success_criteria` (frontend always posts multipart).
+
 ### 🔎 Frontend coverage sweep — remaining gaps (prioritized backlog)
 Cross-referenced every Next.js call vs. implemented routes. **All code-backlog items are now DONE** (`e7d5cdd`). The only outstanding work is **live in-browser QA** of the accept/reject/evaluate flow (was blocked on IdM reachability; now reachable — see §2 + the auto-memory `idm-requires-nec-network`). Drive applicant-accept → `WaitingForEvaluation` → evaluation, plus reject, end-to-end.
 
