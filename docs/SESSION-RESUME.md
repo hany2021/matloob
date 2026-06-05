@@ -251,6 +251,13 @@ Cross-referenced every Next.js call vs. implemented routes. **All code-backlog i
 
 1. ✅ **DONE — Notifications FYI layer** (the last remaining item). All 5 legacy DB notifications emitted with no schema change — see the ⭐ THIS SESSION entry above. The open `OfferIsActive` marker decision was resolved by firing it event-driven at accept (no migration).
 
+**Live QA done this session (in-browser, logged in as OwnerProjectManager individual):**
+- ✅ **Accept flow driven end-to-end.** Reset the live test offer `0129bcef` to Pending, opened its contract detail (renders correctly: event name in title via the hydration sweep, "بانتظار الرد" pending-status card, salary 900 SAR, both parties), clicked قبول العرض → confirm → offer went **Accepted**, and the new accept-time emissions fired in `outbox_events` at the same timestamp: **`offer.is_active` + `opportunity.fulfilled`** (alongside `offer.accepted`). The accepted detail then renders "الطلب مقبول" + إلغاء العقد. **Fixture restored to Pending afterward.**
+- ✅ **Evaluation read path** (`GET users/offers/unevaluated`) returns **200 with event-hydrated data** when authed (my `OfferReadMapper`/`EvaluationReadMapper` change). Could not click through the evaluation *form* — the OIDC token expired mid-session (~60 min) and the page 401'd (the "حدث خطأ ما!" was token expiry, **not a bug**).
+- 📌 **Finding (config, not code): the OutboxDispatcher + StatusSync background services are NOT enabled in the local dev API run** — emitted outbox rows (incl. older `offer.created`/`offer.rejected`) sit unprocessed, so notifications don't auto-materialize live. The handler logic that turns these events into `notifications` rows IS covered by the passing integration tests (they drive the dispatcher directly). To exercise it live, enable the dispatcher/StatusSync workers (the `*:Enabled` opt-ins).
+- ↩️ **Reject + evaluation-form** not freshly clicked live (single test offer; reject's terminal state was observed rendered, accept consumed the offer). Re-auth + a fresh offer needed to finish those.
+- 🌐 **IdM `10.100.6.4:55310` is reachable again** (was timing out at session start — first call cold-starts slowly; see auto-memory `idm-requires-nec-network`).
+
 ### Not gaps
 - **Intentionally dropped** (Qiwa/Ajeer/billing): `establishments/invoices` (+`/{id}`,`/issue`), `contracts-regulations`, `offers/pending-invoice`, `offers/ajeer/check-eligibility`.
 - **Auth**: `users/auth/login`, `me/logout` → IdentityServer/OIDC, not this API.
