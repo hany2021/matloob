@@ -7,6 +7,7 @@ using Matloob.Api.Infrastructure.Storage;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Events;
 using Matloob.Domain.Opportunities;
+using Matloob.Domain.Reference;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
@@ -86,32 +87,77 @@ internal static partial class EventOpportunitiesSupport
     }
 
     public static async Task ValidateAsync(
-        AppDbContext db, IReadOnlyList<OpportunityInput> items, List<(string, string)> errors, CancellationToken ct)
+        AppDbContext db, IReadOnlyList<OpportunityInput> items, List<(string, string)> errors,
+        CancellationToken ct, DateOnly? eventStart = null, DateOnly? eventEnd = null)
     {
         for (var i = 0; i < items.Count; i++)
         {
             var o = items[i];
             var p = $"opportunities.{i}";
 
+            // Resolve the category up front — its for_vacancy flag drives the
+            // type-aware required-field rules below.
+            OpportunityCategory? category = null;
             if (!Guid.TryParse(o.Field("opportunity_category_uuid") ?? o.Field("opportunity_category_id"), out var catId))
                 errors.Add(($"{p}.opportunity_category_uuid", "A valid opportunity category is required."));
-            else if (!await db.OpportunityCategories.AnyAsync(c => c.Id == catId, ct))
-                errors.Add(($"{p}.opportunity_category_uuid", "Opportunity category not found."));
+            else
+            {
+                category = await db.OpportunityCategories.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == catId, ct);
+                if (category is null)
+                    errors.Add(($"{p}.opportunity_category_uuid", "Opportunity category not found."));
+            }
 
             if (string.IsNullOrWhiteSpace(o.Field("name")) || o.Field("name")!.Trim().Length > 120)
                 errors.Add(($"{p}.name", "Name is required and must be 120 characters or fewer."));
             if (string.IsNullOrWhiteSpace(o.Field("description")) || o.Field("description")!.Trim().Length < 10)
                 errors.Add(($"{p}.description", "Description is required (min 10 characters)."));
-            if (ParseDate(o.Field("start_date")) is null)
+
+            var startDate = ParseDate(o.Field("start_date"));
+            var endDate = ParseDate(o.Field("end_date"));
+            if (startDate is null)
                 errors.Add(($"{p}.start_date", "A valid start date is required."));
-            if (ParseDate(o.Field("end_date")) is null)
+            if (endDate is null)
                 errors.Add(($"{p}.end_date", "A valid end date is required."));
+            // Ordering (legacy `after:start_date`) — a clean 422 instead of the
+            // domain factory's ArgumentException (which would surface as a 500).
+            if (startDate is not null && endDate is not null && endDate <= startDate)
+                errors.Add(($"{p}.end_date", "End date must be after the start date."));
+            // Within the owning event's window (legacy ValidOpportunityStart/EndDate).
+            // Skipped when the event's dates aren't known yet (e.g. early wizard
+            // validation pings before step_two is filled).
+            if (startDate is not null && eventStart is not null && startDate < eventStart)
+                errors.Add(($"{p}.start_date", "Start date must be on or after the event's start date."));
+            if (endDate is not null && eventEnd is not null && endDate > eventEnd)
+                errors.Add(($"{p}.end_date", "End date must be on or before the event's end date."));
+
             if (!TryDecimal(o.Field("lat"), out var lat) || lat is < -90 or > 90)
                 errors.Add(($"{p}.lat", "Latitude must be between -90 and 90."));
             if (!TryDecimal(o.Field("lon"), out var lon) || lon is < -180 or > 180)
                 errors.Add(($"{p}.lon", "Longitude must be between -180 and 180."));
             if (!int.TryParse(o.Field("required_personnel"), out var rp) || rp < 1)
                 errors.Add(($"{p}.required_personnel", "Required personnel must be at least 1."));
+
+            // Type-aware required fields (legacy RequiredForVacancy /
+            // RequiredForOpportunity): a vacancy needs a monthly salary; a
+            // non-vacancy needs at least one success criterion. The frontend is
+            // laravel-precognition (server-driven validation), so it relies on
+            // these 422s to block an incomplete submit.
+            if (category is not null)
+            {
+                if (category.ForVacancy)
+                {
+                    var salaryRaw = o.Field("monthly_salary");
+                    if (string.IsNullOrWhiteSpace(salaryRaw)
+                        || !decimal.TryParse(salaryRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out var salary)
+                        || salary < 0)
+                        errors.Add(($"{p}.monthly_salary", "Monthly salary is required for a vacancy opportunity."));
+                }
+                else if (o.Criteria.Count == 0)
+                {
+                    errors.Add(($"{p}.success_criteria", "At least one success criterion is required."));
+                }
+            }
 
             foreach (var f in o.Files)
             {

@@ -24,6 +24,7 @@ public sealed class MultipartOpportunityCreateTests
     private readonly OpportunitiesApiFactory _factory;
     private Guid _establishmentId;
     private Guid _nonVacancyCategoryId;
+    private Guid _vacancyCategoryId;
 
     private static readonly byte[] PngBytes =
         { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01 };
@@ -41,6 +42,9 @@ public sealed class MultipartOpportunityCreateTests
         // Non-vacancy category so success criteria are persisted (legacy rule).
         _nonVacancyCategoryId = await db.OpportunityCategories
             .Where(c => !c.ForVacancy && !c.IsOther && c.ParentId != null)
+            .Select(c => c.Id).FirstAsync();
+        _vacancyCategoryId = await db.OpportunityCategories
+            .Where(c => c.ForVacancy && !c.IsOther && c.ParentId != null)
             .Select(c => c.Id).FirstAsync();
     }
 
@@ -75,9 +79,10 @@ public sealed class MultipartOpportunityCreateTests
         var eventId = await SeedEventAsync();
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
 
-        using (var first = BuildOpportunityForm(eventId, "First opportunity", withCriterion: false, withUpload: false))
+        // Non-vacancy category requires a success criterion (legacy RequiredForOpportunity).
+        using (var first = BuildOpportunityForm(eventId, "First opportunity", withCriterion: true, withUpload: false))
             (await client.PostAsync("/api/establishments/me/opportunities", first)).EnsureSuccessStatusCode();
-        using (var second = BuildOpportunityForm(eventId, "Second opportunity", withCriterion: false, withUpload: false))
+        using (var second = BuildOpportunityForm(eventId, "Second opportunity", withCriterion: true, withUpload: false))
             (await client.PostAsync("/api/establishments/me/opportunities", second)).EnsureSuccessStatusCode();
 
         using var scope = _factory.CreateDbScope();
@@ -92,7 +97,7 @@ public sealed class MultipartOpportunityCreateTests
         var eventId = await SeedEventAsync();
         var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
 
-        using var form = BuildOpportunityForm(eventId, "Precog opportunity", withCriterion: false, withUpload: false);
+        using var form = BuildOpportunityForm(eventId, "Precog opportunity", withCriterion: true, withUpload: false);
         var req = new HttpRequestMessage(HttpMethod.Post, "/api/establishments/me/opportunities") { Content = form };
         req.Headers.Add("Precognition", "true");
         var response = await client.SendAsync(req);
@@ -116,35 +121,123 @@ public sealed class MultipartOpportunityCreateTests
         Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("event_uuid", out _));
     }
 
+    [Fact]
+    public async Task Multipart_NonVacancy_NoCriteria_Returns422()
+    {
+        var eventId = await SeedEventAsync();
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        // Non-vacancy category with no success criterion (legacy RequiredForOpportunity).
+        using var form = BuildOpportunityForm(eventId, "No-criteria opp", withCriterion: false, withUpload: false);
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors")
+            .TryGetProperty("opportunities.0.success_criteria", out _));
+    }
+
+    [Fact]
+    public async Task Multipart_Vacancy_NoSalary_Returns422()
+    {
+        var eventId = await SeedEventAsync();
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        // Vacancy category with no monthly_salary (legacy RequiredForVacancy).
+        using var form = BuildOpportunityForm(eventId, "No-salary vacancy", withCriterion: false, withUpload: false,
+            categoryId: _vacancyCategoryId);
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors")
+            .TryGetProperty("opportunities.0.monthly_salary", out _));
+    }
+
+    [Fact]
+    public async Task Multipart_Vacancy_WithSalary_Creates()
+    {
+        var eventId = await SeedEventAsync();
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        // Vacancy + salary, and no criteria required for vacancy → 201.
+        using var form = BuildOpportunityForm(eventId, "Vacancy opp", withCriterion: false, withUpload: false,
+            categoryId: _vacancyCategoryId, monthlySalary: "5000");
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Multipart_EndBeforeStart_Returns422()
+    {
+        var eventId = await SeedEventAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        using var form = BuildOpportunityForm(eventId, "Bad-dates opp", withCriterion: true, withUpload: false,
+            startDate: today.AddDays(10), endDate: today.AddDays(5));
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors")
+            .TryGetProperty("opportunities.0.end_date", out _));
+    }
+
+    [Fact]
+    public async Task Multipart_OpportunityOutsideEventWindow_Returns422()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var eventId = await SeedEventAsync(start: today.AddDays(10), end: today.AddDays(20));
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        // Opp starts before the event's window (legacy ValidOpportunityStartDate).
+        using var form = BuildOpportunityForm(eventId, "Out-of-bounds opp", withCriterion: true, withUpload: false,
+            startDate: today.AddDays(5), endDate: today.AddDays(15));
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors")
+            .TryGetProperty("opportunities.0.start_date", out _));
+    }
+
     // -- helpers --------------------------------------------------------------
 
-    private async Task<Guid> SeedEventAsync()
+    private async Task<Guid> SeedEventAsync(DateOnly? start = null, DateOnly? end = null)
     {
         using var scope = _factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var ev = new Event(Guid.NewGuid(), _establishmentId, Guid.NewGuid(), "Host Event", "An event.", null);
+        if (start is not null && end is not null)
+            ev.ApplySchedule(start, end, "Riyadh", 24.7m, 46.6m, 1, 100, null);
         db.Events.Add(ev);
         await db.SaveChangesAsync();
         return ev.Id;
     }
 
     private MultipartFormDataContent BuildOpportunityForm(
-        Guid eventId, string name, bool withCriterion, bool withUpload)
+        Guid eventId, string name, bool withCriterion, bool withUpload,
+        Guid? categoryId = null, string? monthlySalary = null,
+        DateOnly? startDate = null, DateOnly? endDate = null)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var form = new MultipartFormDataContent
         {
             { new StringContent(eventId.ToString()), "event_uuid" },
-            { new StringContent(_nonVacancyCategoryId.ToString()), "opportunities[0][opportunity_category_uuid]" },
+            { new StringContent((categoryId ?? _nonVacancyCategoryId).ToString()), "opportunities[0][opportunity_category_uuid]" },
             { new StringContent(name), "opportunities[0][name]" },
             { new StringContent("A detailed opportunity description for validation."), "opportunities[0][description]" },
-            { new StringContent(today.AddDays(5).ToString("yyyy-MM-dd")), "opportunities[0][start_date]" },
-            { new StringContent(today.AddDays(15).ToString("yyyy-MM-dd")), "opportunities[0][end_date]" },
+            { new StringContent((startDate ?? today.AddDays(5)).ToString("yyyy-MM-dd")), "opportunities[0][start_date]" },
+            { new StringContent((endDate ?? today.AddDays(15)).ToString("yyyy-MM-dd")), "opportunities[0][end_date]" },
             { new StringContent("Riyadh"), "opportunities[0][location_title]" },
             { new StringContent("24.7"), "opportunities[0][lat]" },
             { new StringContent("46.6"), "opportunities[0][lon]" },
             { new StringContent("3"), "opportunities[0][required_personnel]" },
         };
+
+        if (monthlySalary is not null)
+            form.Add(new StringContent(monthlySalary), "opportunities[0][monthly_salary]");
 
         if (withCriterion)
         {

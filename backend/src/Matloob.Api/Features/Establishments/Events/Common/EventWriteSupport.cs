@@ -199,8 +199,13 @@ internal static class EventWriteSupport
 
         if (EventOpportunitiesSupport.HasOpportunities(form))
         {
+            // Pass the event's planned window so nested opportunities are bound
+            // to it (legacy ValidOpportunityStart/EndDate). Null when step_two
+            // isn't in this submit — the check is then skipped.
             await EventOpportunitiesSupport.ValidateAsync(
-                db, EventOpportunitiesSupport.Parse(form), errors, ct);
+                db, EventOpportunitiesSupport.Parse(form), errors, ct,
+                ParseDate(Field(form, "step_two", "start_date")),
+                ParseDate(Field(form, "step_two", "end_date")));
         }
 
         return errors;

@@ -517,6 +517,7 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         fields.Add(("opportunities[0][lat]", "24.7"));
         fields.Add(("opportunities[0][lon]", "46.6"));
         fields.Add(("opportunities[0][required_personnel]", "2"));
+        fields.Add(("opportunities[0][monthly_salary]", "5000")); // vacancy category requires it
 
         var resp = await Owner().PostAsync(
             $"/api/establishments/events?establishment_id={est}", Form(fields.ToArray()));
@@ -906,6 +907,7 @@ public sealed class EventsTests : IClassFixture<EstablishmentsApiFactory>
         F("lat", "24.7");
         F("lon", "46.6");
         F("required_personnel", "5");
+        F("monthly_salary", "5000"); // required for vacancy categories; harmless for non-vacancy
     }
 
     [Fact]

@@ -402,15 +402,21 @@ public sealed class CreateOpportunityEndpoint
             errors.Add(("event_uuid", "A valid event is required."));
         if (items.Count == 0)
             errors.Add(("opportunities", "At least one opportunity is required."));
-        await EventOpportunitiesSupport.ValidateAsync(_db, items, errors, ct);
 
-        // The event must exist AND belong to the resolved establishment (legacy
-        // ValidEventForOpportunity). Only check when the id parsed.
-        if (eventId != Guid.Empty
-            && !await _db.Events.AnyAsync(e => e.Id == eventId && e.EstablishmentId == establishmentId, ct))
-        {
+        // Load the event once: its window bounds the opportunities (legacy
+        // ValidOpportunityStart/EndDate) and it must belong to the resolved
+        // establishment (legacy ValidEventForOpportunity).
+        var ev = eventId == Guid.Empty
+            ? null
+            : await _db.Events.AsNoTracking()
+                .Where(e => e.Id == eventId)
+                .Select(e => new { e.EstablishmentId, e.StartDate, e.EndDate })
+                .FirstOrDefaultAsync(ct);
+
+        await EventOpportunitiesSupport.ValidateAsync(_db, items, errors, ct, ev?.StartDate, ev?.EndDate);
+
+        if (eventId != Guid.Empty && (ev is null || ev.EstablishmentId != establishmentId))
             errors.Add(("event_uuid", "Event not found."));
-        }
 
         if (errors.Count > 0)
         {
