@@ -61,9 +61,13 @@ internal sealed class OpportunityConfiguration : IEntityTypeConfiguration<Opport
             .HasConversion<int>()
             .IsRequired();
 
-        // WorkingHoursType is nullable — store as nullable string.
+        // WorkingHoursType is nullable — store the legacy wire token
+        // (full_time/part_time), NOT the C# member name, so the column matches
+        // the legacy DB and round-trips with the frontend.
         builder.Property(x => x.WorkingHoursType)
-            .HasConversion<string?>()
+            .HasConversion(
+                v => v.HasValue ? v.Value.ToWire() : null,
+                s => WorkingHoursTypeWire.Parse(s))
             .HasMaxLength(32);
 
         builder.Property(x => x.EndedByUserId).HasMaxLength(200);

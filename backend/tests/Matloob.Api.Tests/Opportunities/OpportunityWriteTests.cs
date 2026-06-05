@@ -118,6 +118,49 @@ public sealed class OpportunityWriteTests
         Assert.Equal(1, outboxCount);
     }
 
+    [Theory]
+    [InlineData("full_time")]
+    [InlineData("part_time")]
+    public async Task Create_WorkingHoursType_RoundTripsWireToken(string wireToken)
+    {
+        // Regression: the WorkingHoursType enum was Fixed/Flexible/Shifts, so
+        // Enum.TryParse("full_time") failed and the value was silently dropped on
+        // every opportunity. It must round-trip the legacy/frontend wire token.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/establishments/{_establishmentId}/opportunities",
+            new
+            {
+                event_id = Guid.NewGuid(),
+                opportunity_category_id = _vacancyCategoryId,
+                name = "WH opp",
+                description = "Long-enough description for the opportunity.",
+                start_date = today.AddDays(5).ToString("yyyy-MM-dd"),
+                end_date = today.AddDays(15).ToString("yyyy-MM-dd"),
+                location_title = "Riyadh",
+                lat = 24.7m,
+                lon = 46.6m,
+                required_personnel = 3,
+                monthly_salary = 5000m,
+                working_hours_type = wireToken,
+                working_hours_from = "09:00:00",
+                working_hours_to = "17:00:00",
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(wireToken, data.GetProperty("working_hours_type").GetString());
+
+        // And it actually persisted (EF converter round-trip), not just echoed.
+        var id = data.GetProperty("id").GetGuid();
+        var persisted = await OaoHelpers.LoadOpportunityAsync(_factory, id);
+        Assert.Equal(
+            Matloob.Domain.Opportunities.WorkingHoursTypeWire.Parse(wireToken),
+            persisted!.WorkingHoursType);
+    }
+
     [Fact]
     public async Task Create_StartDateInPast_StartsActive()
     {

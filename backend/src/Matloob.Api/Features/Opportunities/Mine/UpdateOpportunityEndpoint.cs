@@ -108,7 +108,7 @@ public sealed class UpdateOpportunityEndpoint
                 nationalityId: req.NationalityId,
                 monthlySalary: req.MonthlySalary,
                 yearsOfExperienceRequired: req.YearsOfExperienceRequired,
-                workingHoursType: ParseEnum<WorkingHoursType>(req.WorkingHoursType),
+                workingHoursType: WorkingHoursTypeWire.Parse(req.WorkingHoursType),
                 workingHoursFrom: ParseTime(req.WorkingHoursFrom),
                 workingHoursTo: ParseTime(req.WorkingHoursTo),
                 fees: req.Fees,

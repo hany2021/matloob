@@ -42,7 +42,7 @@ internal static class OpportunityReadMapper
             YearsOfExperienceRequired = opportunity.YearsOfExperienceRequired,
             EstablishmentClassification = ExpandClassificationFlags(opportunity.EstablishmentClassifications),
             EstablishmentClassificationLabel = null,
-            WorkingHoursType = opportunity.WorkingHoursType?.ToString(),
+            WorkingHoursType = opportunity.WorkingHoursType?.ToWire(),
             WorkingHoursTypeLabel = null,
             WorkingHoursFrom = opportunity.WorkingHoursFrom?.ToString("HH:mm:ss"),
             WorkingHoursTo = opportunity.WorkingHoursTo?.ToString("HH:mm:ss"),

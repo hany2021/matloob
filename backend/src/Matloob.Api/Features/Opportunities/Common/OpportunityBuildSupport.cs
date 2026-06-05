@@ -55,7 +55,7 @@ internal static class OpportunityBuildSupport
             nationalityId: nationalityId,
             monthlySalary: monthlySalary,
             yearsOfExperienceRequired: yearsOfExperienceRequired,
-            workingHoursType: ParseEnum<WorkingHoursType>(workingHoursTypeRaw),
+            workingHoursType: WorkingHoursTypeWire.Parse(workingHoursTypeRaw),
             workingHoursFrom: ParseTime(workingHoursFromRaw),
             workingHoursTo: ParseTime(workingHoursToRaw),
             fees: fees,
