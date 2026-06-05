@@ -136,7 +136,8 @@ public sealed class GetDraftedEventEndpoint : EndpointWithoutRequest<DraftedEven
                 _db, o, subClaim: null, establishmentApplicantId: null, ct);
             result.Add(OpportunityReadMapper.Map(
                 o, bundle.Category, bundle.Issuer, bundle.Nationality,
-                bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount, bundle.IsApplied));
+                bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount, bundle.IsApplied,
+                bundle.Event));
         }
         return result;
     }

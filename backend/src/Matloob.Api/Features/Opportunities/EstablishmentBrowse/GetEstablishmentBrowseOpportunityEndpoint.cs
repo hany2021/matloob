@@ -91,11 +91,6 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             establishmentApplicantId: establishmentId,
             ct);
 
-        // The detail page dereferences `opportunity.event.*`, so hydrate it.
-        var eventEntity = await _db.Events
-            .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == opportunity.EventId, ct);
-
         var response = OpportunityReadMapper.Map(
             opportunity,
             bundle.Category,
@@ -105,7 +100,7 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             bundle.Uploads,
             bundle.ApplicantsCount,
             bundle.IsApplied,
-            eventEntity);
+            bundle.Event);
         await Send.OkAsync(response, ct);
     }
 }

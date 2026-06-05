@@ -106,14 +106,6 @@ public sealed class ListMineOpportunitiesEndpoint
             .Take(500)
             .ToListAsync(ct);
 
-        // Batch-load the owning events so each card can render
-        // `opportunity.event.name` (the frontend dereferences it unguarded).
-        var eventIds = opportunities.Select(o => o.EventId).Distinct().ToList();
-        var eventsById = await _db.Events
-            .AsNoTracking()
-            .Where(e => eventIds.Contains(e.Id))
-            .ToDictionaryAsync(e => e.Id, ct);
-
         // Batch-load applications (soft-delete filtered globally) so each
         // card can render `applicants.length` — the legacy owner list
         // eager-loaded `applicants` for exactly this. Avatars are off, so a
@@ -150,7 +142,6 @@ public sealed class ListMineOpportunitiesEndpoint
                 subClaim: null,
                 establishmentApplicantId: establishmentId,
                 ct);
-            eventsById.TryGetValue(opportunity.EventId, out var eventEntity);
             var applicants = applicantsByOpp.GetValueOrDefault(opportunity.Id);
             var response = OpportunityReadMapper.Map(
                 opportunity,
@@ -161,7 +152,7 @@ public sealed class ListMineOpportunitiesEndpoint
                 bundle.Uploads,
                 bundle.ApplicantsCount,
                 bundle.IsApplied,
-                eventEntity,
+                bundle.Event,
                 applicants);
 
             switch (opportunity.Status)

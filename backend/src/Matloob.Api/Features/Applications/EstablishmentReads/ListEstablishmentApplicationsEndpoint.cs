@@ -108,6 +108,7 @@ public sealed class ListEstablishmentApplicationsEndpoint
             bundle.SuccessCriteria,
             bundle.Uploads,
             bundle.ApplicantsCount,
-            bundle.IsApplied);
+            bundle.IsApplied,
+            bundle.Event);
     }
 }

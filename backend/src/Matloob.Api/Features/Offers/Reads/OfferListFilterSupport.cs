@@ -63,6 +63,40 @@ internal static class OfferListFilterSupport
                     && cityIds.Contains(opp.CityId.Value)));
         }
 
+        // sender_name — the بحث box on the RECEIVED-offers screen (legacy
+        // OfferQueryBuilder::bySenderName): match the sending establishment's
+        // name. Case-insensitive contains via ToLower() (EF.Functions.ILike
+        // doesn't translate on the InMemory provider the tests use).
+        var senderName = ctx.Request.Query["sender_name"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(senderName))
+        {
+            var n = senderName.Trim().ToLowerInvariant();
+            query = query.Where(o => db.Establishments
+                .Any(e => e.Id == o.SenderEstablishmentId
+                    && e.Name != null
+                    && e.Name.ToLower().Contains(n)));
+        }
+
+        // applicant_name — the بحث box on the SENT-offers screen (legacy
+        // OfferQueryBuilder::byApplicantName): match the applicant's name,
+        // whether the applier is a user or an establishment. Resolved through
+        // the offer's application (applicant FK is exactly one of the two).
+        var applicantName = ctx.Request.Query["applicant_name"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(applicantName))
+        {
+            var n = applicantName.Trim().ToLowerInvariant();
+            query = query.Where(o => db.OpportunityApplications.Any(a =>
+                a.Id == o.ApplicationId
+                && ((a.ApplicantUserId != null && db.Users.Any(u =>
+                        u.IdentityId == a.ApplicantUserId
+                        && u.Name != null
+                        && u.Name.ToLower().Contains(n)))
+                    || (a.ApplicantEstablishmentId != null && db.Establishments.Any(e =>
+                        e.Id == a.ApplicantEstablishmentId
+                        && e.Name != null
+                        && e.Name.ToLower().Contains(n))))));
+        }
+
         return query;
     }
 

@@ -473,7 +473,8 @@ public sealed class CreateOpportunityEndpoint
             bundle.SuccessCriteria,
             bundle.Uploads,
             bundle.ApplicantsCount,
-            bundle.IsApplied);
+            bundle.IsApplied,
+            bundle.Event);
     }
 
     private static Opportunity BuildOpportunity(

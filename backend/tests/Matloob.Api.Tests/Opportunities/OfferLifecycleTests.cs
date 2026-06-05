@@ -125,6 +125,64 @@ public sealed class OfferLifecycleTests
             .Select(e => e.GetProperty("id").GetGuid()).ToList();
     }
 
+    private static async Task<List<Guid>> ReceivedOfferIds(
+        HttpClient client, Guid establishmentId, string query)
+    {
+        var json = await client.GetStringAsync(
+            $"/api/v1/establishments/{establishmentId}/received-offers{query}");
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.DataOf().EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+    }
+
+    [Fact]
+    public async Task SentOffers_ApplicantNameSearch_FiltersByApplierName()
+    {
+        // The بحث box on the sent-offers screen sends ?applicant_name= and
+        // legacy matched the applier's name. Seed a named user + its own
+        // offer so the assertion is isolated from the shared fixture.
+        var namedWorker = new TestUser(Sub: "oao-offer-named-worker", Roles: new[] { "matloob_user" });
+        await OaoHelpers.SeedLocalUserAsync(_factory, namedWorker.Sub);
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = await db.Users.FirstAsync(u => u.IdentityId == namedWorker.Sub);
+            typeof(Matloob.Domain.Users.User).GetProperty(nameof(Matloob.Domain.Users.User.Name))!
+                .SetValue(user, "Ahmed Worker");
+            await db.SaveChangesAsync();
+        }
+        var appId = await OaoHelpers.SeedApplicationAsync(
+            _factory, _opportunityVacancy, applicantUserId: namedWorker.Sub);
+        var offerId = await OaoHelpers.SeedOfferAsync(
+            _factory, _senderEstablishment, _opportunityVacancy, appId, OaoHelpers.EstablishmentOwner.Sub);
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        // Case-insensitive substring → present; non-matching → absent.
+        Assert.Contains(offerId, await SentOfferIds(client, "?applicant_name=ahmed"));
+        Assert.DoesNotContain(offerId, await SentOfferIds(client, "?applicant_name=zzznotpresent"));
+    }
+
+    [Fact]
+    public async Task ReceivedOffers_SenderNameSearch_FiltersBySenderName()
+    {
+        // The بحث box on the received-offers screen sends ?sender_name= and
+        // legacy matched the sending establishment's name. The sender's
+        // seeded name contains "Test Establishment".
+        var applicantOwner = new TestUser(Sub: "oao-offer-recv-owner", Roles: new[] { "matloob_user" });
+        await OaoHelpers.SeedLocalUserAsync(_factory, applicantOwner.Sub);
+        var applicantEst = await OaoHelpers.SeedApprovedEstablishmentAsync(
+            _factory, applicantOwner.Sub, "CR-OAO-OFFER-RECV");
+        var estApplication = await OaoHelpers.SeedApplicationAsync(
+            _factory, _opportunityVacancy,
+            applicantEstablishmentId: applicantEst, appliedByUserId: applicantOwner.Sub);
+        var offerId = await OaoHelpers.SeedOfferAsync(
+            _factory, _senderEstablishment, _opportunityVacancy, estApplication, OaoHelpers.EstablishmentOwner.Sub);
+
+        var client = _factory.CreateClientFor(applicantOwner);
+        Assert.Contains(offerId, await ReceivedOfferIds(client, applicantEst, "?sender_name=test"));
+        Assert.DoesNotContain(offerId, await ReceivedOfferIds(client, applicantEst, "?sender_name=zzznotpresent"));
+    }
+
     [Fact]
     public async Task Send_VacancyDailyWage_ComputesMonthlySalaryAndWorkingDays()
     {

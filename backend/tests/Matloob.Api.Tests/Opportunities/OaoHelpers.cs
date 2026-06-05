@@ -109,7 +109,9 @@ internal static class OaoHelpers
         string name = "Test Opportunity",
         DateOnly? startDate = null,
         DateOnly? endDate = null,
-        OpportunityStatus status = OpportunityStatus.Upcoming)
+        OpportunityStatus status = OpportunityStatus.Upcoming,
+        int requiredPersonnel = 10,
+        Guid? eventId = null)
     {
         using var scope = factory.CreateDbScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -123,7 +125,7 @@ internal static class OaoHelpers
         var opp = Opportunity.Create(
             id: Guid.NewGuid(),
             issuerEstablishmentId: issuerEstablishmentId,
-            eventId: Guid.NewGuid(),
+            eventId: eventId ?? Guid.NewGuid(),
             opportunityCategoryId: category.Id,
             name: name,
             description: "A long-enough description for the opportunity.",
@@ -132,7 +134,7 @@ internal static class OaoHelpers
             locationTitle: "Riyadh",
             latitude: 24.7m,
             longitude: 46.6m,
-            requiredPersonnel: 10,
+            requiredPersonnel: requiredPersonnel,
             now: now);
 
         // Override the auto-status if caller asked for something else

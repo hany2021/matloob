@@ -75,6 +75,14 @@ internal static class OpportunityReadQueries
             .AsNoTracking()
             .CountAsync(app => app.OpportunityId == opportunity.Id, ct);
 
+        // The frontend dereferences `opportunity.event.*` unguarded on every
+        // opportunity card / detail / application / evaluation screen, so the
+        // owning event is part of the standard sidecar — hydrate it here once
+        // and every read path gets it for free (no more `event: null`).
+        var eventEntity = await db.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == opportunity.EventId, ct);
+
         bool? isApplied = null;
         if (!string.IsNullOrEmpty(subClaim))
         {
@@ -100,7 +108,8 @@ internal static class OpportunityReadQueries
             successCriteria,
             uploads,
             applicantsCount,
-            isApplied);
+            isApplied,
+            eventEntity);
     }
 }
 
@@ -111,4 +120,5 @@ internal sealed record OpportunityReadBundle(
     IReadOnlyList<SuccessManagementCriterion> SuccessCriteria,
     IReadOnlyList<OpportunityUploadDto> Uploads,
     int ApplicantsCount,
-    bool? IsApplied);
+    bool? IsApplied,
+    Matloob.Domain.Events.Event? Event);

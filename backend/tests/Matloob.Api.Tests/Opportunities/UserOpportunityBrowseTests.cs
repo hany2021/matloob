@@ -1,7 +1,10 @@
 using System.Net;
 using System.Text.Json;
+using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Tests.Common;
 using Matloob.Domain.Opportunities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Matloob.Api.Tests.Opportunities;
 
@@ -32,6 +35,35 @@ public sealed class UserOpportunityBrowseTests
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
+
+    // -- event population (event: null sweep) -------------------------------
+
+    [Fact]
+    public async Task Single_PopulatesOwningEvent()
+    {
+        // The frontend dereferences `opportunity.event.name` unguarded; the
+        // read must hydrate the owning event, not emit `event: null`.
+        var eventId = Guid.NewGuid();
+        using (var scope = _factory.CreateDbScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Events.Add(new Matloob.Domain.Events.Event(
+                eventId, _establishmentId, Guid.NewGuid(), "Riyadh Season", "An event", seasonId: null));
+            await db.SaveChangesAsync();
+        }
+        var oppId = await OaoHelpers.SeedOpportunityAsync(
+            _factory, _establishmentId, name: "EventBacked", forVacancy: true, eventId: eventId);
+
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.GetAsync($"/api/users/opportunities/{oppId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = doc.RootElement.DataOf();
+        var ev = data.GetProperty("event");
+        Assert.Equal(JsonValueKind.Object, ev.ValueKind);
+        Assert.Equal("Riyadh Season", ev.GetProperty("name").GetString());
+    }
 
     // -- list ---------------------------------------------------------------
 

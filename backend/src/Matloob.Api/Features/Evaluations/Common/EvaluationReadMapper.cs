@@ -26,7 +26,7 @@ internal static class EvaluationReadMapper
             opportunityResponse = OpportunityReadMapper.Map(
                 opportunity, bundle.Category, bundle.Issuer, bundle.Nationality,
                 bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount,
-                bundle.IsApplied);
+                bundle.IsApplied, bundle.Event);
         }
 
         var evaluator = await LoadPartyAsync(db,

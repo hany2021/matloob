@@ -1,3 +1,4 @@
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Events;
 using Matloob.Domain.Offers;
@@ -38,12 +39,15 @@ public sealed class StatusSyncService
     private readonly AppDbContext _db;
     private readonly TimeProvider _clock;
     private readonly ILogger<StatusSyncService> _logger;
+    private readonly IOutboxWriter _outbox;
 
-    public StatusSyncService(AppDbContext db, TimeProvider clock, ILogger<StatusSyncService> logger)
+    public StatusSyncService(
+        AppDbContext db, TimeProvider clock, ILogger<StatusSyncService> logger, IOutboxWriter outbox)
     {
         _db = db;
         _clock = clock;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<StatusSyncSummary> RunAsync(CancellationToken ct)
@@ -54,15 +58,26 @@ public sealed class StatusSyncService
         var summary = new StatusSyncSummary();
 
         // -- Events ----------------------------------------------------------
+        // Each transition emits the matching FYI outbox event so the
+        // notification fanout (NotificationOutboxHandler) can tell the event's
+        // establishment — legacy EventStarted/EventEndedNotification.
         var eventsToStart = await _db.Events
             .Where(e => e.Status == EventStatus.Upcoming && e.StartDate != null && e.StartDate <= today)
             .ToListAsync(ct);
-        foreach (var e in eventsToStart) { e.MarkStarted(); summary.EventsStarted++; }
+        foreach (var e in eventsToStart)
+        {
+            e.MarkStarted(); summary.EventsStarted++;
+            _outbox.Enqueue(EventEventTypes.Started, nameof(Event), e.Id, new { id = e.Id, at = now });
+        }
 
         var eventsToFinish = await _db.Events
             .Where(e => e.Status == EventStatus.Active && e.EndDate != null && e.EndDate < today)
             .ToListAsync(ct);
-        foreach (var e in eventsToFinish) { e.MarkFinished(); summary.EventsFinished++; }
+        foreach (var e in eventsToFinish)
+        {
+            e.MarkFinished(); summary.EventsFinished++;
+            _outbox.Enqueue(EventEventTypes.Finished, nameof(Event), e.Id, new { id = e.Id, at = now });
+        }
 
         // -- Opportunities ---------------------------------------------------
         var oppsToStart = await _db.Opportunities
@@ -74,7 +89,14 @@ public sealed class StatusSyncService
             .Where(o => (o.Status == OpportunityStatus.Upcoming || o.Status == OpportunityStatus.Active)
                         && o.EndDate < today)
             .ToListAsync(ct);
-        foreach (var o in oppsToFinish) { o.MarkFinished(); summary.OpportunitiesFinished++; }
+        foreach (var o in oppsToFinish)
+        {
+            o.MarkFinished(); summary.OpportunitiesFinished++;
+            // Legacy OpportunityExpiredNotification — tell the applicants the
+            // opportunity they applied for closed. (Upcoming→Active start has
+            // no legacy notification, so it's not emitted.)
+            _outbox.Enqueue(OpportunityEventTypes.Expired, nameof(Opportunity), o.Id, new { id = o.Id, at = now });
+        }
 
         // -- Offers ----------------------------------------------------------
         var offersToExpire = await _db.Offers
@@ -90,6 +112,9 @@ public sealed class StatusSyncService
 
         if (summary.TotalChanged > 0)
         {
+            // Materialize the staged FYI events as outbox rows so they commit
+            // in the same transaction as the status changes.
+            _outbox.Flush();
             await _db.SaveChangesAsync(ct);
             _logger.LogInformation(
                 "Status sync pass changed {Total} rows: events started={EventsStarted} finished={EventsFinished}, "

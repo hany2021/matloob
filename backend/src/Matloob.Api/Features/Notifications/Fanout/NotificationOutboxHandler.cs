@@ -1,9 +1,11 @@
 using Matloob.Api.Infrastructure.Events.Dispatcher;
 using Matloob.Api.Infrastructure.Notifications;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Domain.Applications;
 using Matloob.Domain.Events;
 using Matloob.Domain.Notifications;
 using Matloob.Domain.Offers;
+using Matloob.Domain.Opportunities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Notifications.Fanout;
@@ -47,6 +49,21 @@ public sealed class NotificationOutboxHandler : IOutboxHandler
             case OfferEventTypes.Created:
                 await SendNewOfferSmsAsync(evt.AggregateId, ct);
                 break;
+            case OfferEventTypes.IsActive:
+                await AddOfferIsActiveAsync(evt.AggregateId, ct);
+                break;
+            case EventEventTypes.Started:
+                await AddEventNotificationAsync(evt.AggregateId, "Your event has started today", ct);
+                break;
+            case EventEventTypes.Finished:
+                await AddEventNotificationAsync(evt.AggregateId, "Your event has ended today", ct);
+                break;
+            case OpportunityEventTypes.Expired:
+                await AddOpportunityFanoutAsync(evt.AggregateId, onlyApplicantsWithoutActiveOffer: false, ct);
+                break;
+            case OpportunityEventTypes.Fulfilled:
+                await AddOpportunityFanoutAsync(evt.AggregateId, onlyApplicantsWithoutActiveOffer: true, ct);
+                break;
         }
     }
 
@@ -82,6 +99,122 @@ public sealed class NotificationOutboxHandler : IOutboxHandler
             applicant.RecipientId,
             "You have received a new offer. Log in to view the details.",
             ct);
+    }
+
+    // -- FYI fanout (time-driven status sync + accept-time) -------------------
+
+    /// <summary>
+    /// <c>offer.is_active</c> → tell the APPLICANT their offer is now active
+    /// (legacy <c>OfferIsActiveNotification</c>, <c>received_offer</c>).
+    /// </summary>
+    private async Task AddOfferIsActiveAsync(Guid offerId, CancellationToken ct)
+    {
+        var offer = await _db.Offers.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == offerId, ct);
+        if (offer is null) return;
+
+        var app = await _db.OpportunityApplications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == offer.ApplicationId, ct);
+        if (app is null) return;
+
+        var (type, id) = ResolveApplicantRecipient(app);
+        if (type is null || id is null) return;
+
+        var senderName = await _db.Establishments.AsNoTracking()
+            .Where(e => e.Id == offer.SenderEstablishmentId)
+            .Select(e => e.Name).FirstOrDefaultAsync(ct);
+
+        _db.Notifications.Add(new Notification(
+            Guid.NewGuid(),
+            type.Value,
+            id,
+            NotificationTypes.ReceivedOffer,
+            title: "Contract is Active",
+            message: $"Congratulations! Your contract is now active with {senderName ?? "the establishment"}",
+            resourceType: "offers",
+            resourceId: offer.Id.ToString()));
+    }
+
+    /// <summary>
+    /// <c>event.started</c> / <c>event.finished</c> → tell the event's
+    /// establishment (legacy <c>EventStarted/EventEndedNotification</c>).
+    /// </summary>
+    private async Task AddEventNotificationAsync(Guid eventId, string message, CancellationToken ct)
+    {
+        var ev = await _db.Events.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == eventId, ct);
+        if (ev is null) return;
+
+        _db.Notifications.Add(new Notification(
+            Guid.NewGuid(),
+            NotificationRecipientType.Establishment,
+            ev.EstablishmentId.ToString(),
+            NotificationTypes.Event,
+            title: ev.Name,
+            message: message,
+            resourceType: "events",
+            resourceId: ev.Id.ToString()));
+    }
+
+    /// <summary>
+    /// <c>opportunity.expired</c> / <c>opportunity.fulfilled</c> → tell the
+    /// opportunity's applicants it closed (legacy
+    /// <c>OpportunityExpired/FulfilledNotification</c>). For the fulfilled
+    /// case, applicants who already hold an active offer (the hired ones) are
+    /// excluded — matching legacy <c>whereDoesntHave('offer', activeStatuses)</c>.
+    /// </summary>
+    private async Task AddOpportunityFanoutAsync(
+        Guid opportunityId, bool onlyApplicantsWithoutActiveOffer, CancellationToken ct)
+    {
+        var opp = await _db.Opportunities.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == opportunityId, ct);
+        if (opp is null) return;
+
+        const string message =
+            "The opportunity you applied for has either expired or filled. "
+            + "Please explore new opportunities available on the platform";
+
+        var applications = await _db.OpportunityApplications.AsNoTracking()
+            .Where(a => a.OpportunityId == opportunityId)
+            .ToListAsync(ct);
+
+        foreach (var app in applications)
+        {
+            if (onlyApplicantsWithoutActiveOffer)
+            {
+                var holdsActiveOffer = await _db.Offers.AsNoTracking()
+                    .AnyAsync(o => o.ApplicationId == app.Id
+                                && OfferStatusSets.Active.Contains(o.Status), ct);
+                if (holdsActiveOffer) continue;
+            }
+
+            var (type, id) = ResolveApplicantRecipient(app);
+            if (type is null || id is null) continue;
+
+            _db.Notifications.Add(new Notification(
+                Guid.NewGuid(),
+                type.Value,
+                id,
+                NotificationTypes.Opportunity,
+                title: opp.Name,
+                message: message,
+                resourceType: "opportunities",
+                resourceId: opp.Id.ToString()));
+        }
+    }
+
+    /// <summary>
+    /// Maps an application's applier FK to a notification recipient
+    /// (type + id), without a DB round-trip. Exactly one FK is set.
+    /// </summary>
+    private static (NotificationRecipientType? Type, string? Id) ResolveApplicantRecipient(
+        OpportunityApplication app)
+    {
+        if (app.ApplicantEstablishmentId is { } estId)
+            return (NotificationRecipientType.Establishment, estId.ToString());
+        if (!string.IsNullOrEmpty(app.ApplicantUserId))
+            return (NotificationRecipientType.User, app.ApplicantUserId);
+        return (null, null);
     }
 
     private async Task<(string? RecipientId, string? Name)> ResolveApplicantAsync(

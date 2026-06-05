@@ -19,4 +19,12 @@ public static class OfferEventTypes
     public const string SponsorRejected             = "offer.sponsor_rejected";
     public const string Expired                     = "offer.expired";
     public const string Completed                   = "offer.completed";
+
+    /// <summary>
+    /// The applicant accepted and the engagement is now active. In the
+    /// contractless model this fires at accept time (legacy fired it on
+    /// contract-print). Notifies the applicant (legacy
+    /// <c>OfferIsActiveNotification</c>, <c>received_offer</c>).
+    /// </summary>
+    public const string IsActive                    = "offer.is_active";
 }

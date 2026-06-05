@@ -43,6 +43,27 @@ public enum OfferStatus
 }
 
 /// <summary>
+/// Named status sets. Mirrors the legacy static helpers on the Laravel
+/// <c>OfferStatus</c> enum (e.g. <c>activeOfferStatues()</c>).
+/// </summary>
+public static class OfferStatusSets
+{
+    /// <summary>
+    /// Statuses in which an applicant is considered to "hold" the slot —
+    /// legacy <c>OfferStatus::activeOfferStatues()</c> minus the dropped Ajeer
+    /// <c>PROCESSING</c>. Used to count filled personnel (opportunity
+    /// fulfillment) and to exclude already-served applicants from the
+    /// "opportunity fulfilled/expired" fanout.
+    /// </summary>
+    public static readonly OfferStatus[] Active =
+    [
+        OfferStatus.Accepted,
+        OfferStatus.CancellationRequested,
+        OfferStatus.PendingSponsorCancellationApproval,
+    ];
+}
+
+/// <summary>
 /// Maps <see cref="OfferStatus"/> to the lowercase snake_case wire token
 /// the public frontend keys its status cards on (e.g.
 /// <c>statusConfigs[offer.status]</c>). Mirrors the legacy Laravel

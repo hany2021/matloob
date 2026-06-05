@@ -82,7 +82,8 @@ public sealed class GetUserApplicationEndpoint
                 bundle.SuccessCriteria,
                 bundle.Uploads,
                 bundle.ApplicantsCount,
-                bundle.IsApplied);
+                bundle.IsApplied,
+                bundle.Event);
         }
 
         var response = await ApplicationReadMapper.MapAsync(_db, application, opportunity, ct);

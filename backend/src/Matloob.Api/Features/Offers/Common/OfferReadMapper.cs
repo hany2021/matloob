@@ -40,15 +40,12 @@ internal static class OfferReadMapper
         {
             var bundle = await OpportunityReadQueries.LoadSidecarAsync(
                 db, opportunity, subClaim: null, establishmentApplicantId: null, ct);
-            // The offer detail pages dereference `opportunity.event.name`
-            // unguarded, so hydrate the owning event.
-            var oppEvent = await db.Events
-                .AsNoTracking()
-                .FirstOrDefaultAsync(e => e.Id == opportunity.EventId, ct);
+            // `bundle.Event` is the hydrated owning event; the offer detail
+            // pages dereference `opportunity.event.name` unguarded.
             opportunityResponse = OpportunityReadMapper.Map(
                 opportunity, bundle.Category, bundle.Issuer, bundle.Nationality,
                 bundle.SuccessCriteria, bundle.Uploads, bundle.ApplicantsCount,
-                bundle.IsApplied, oppEvent);
+                bundle.IsApplied, bundle.Event);
         }
 
         OpportunityApplicationResponse? applicantResponse = null;

@@ -114,7 +114,8 @@ public sealed class EndOpportunityEndpoint
             bundle.SuccessCriteria,
             bundle.Uploads,
             bundle.ApplicantsCount,
-            bundle.IsApplied);
+            bundle.IsApplied,
+            bundle.Event);
         await Send.OkAsync(response, ct);
     }
 }

@@ -1,3 +1,4 @@
+using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.StatusSync;
 using Matloob.Api.Tests.Assets.Cleanup;
@@ -26,8 +27,22 @@ public sealed class StatusSyncTests
             .UseInMemoryDatabase($"statussync-{Guid.NewGuid():N}")
             .Options);
 
+    private static StatusSyncService Service(AppDbContext db, IOutboxWriter outbox) =>
+        new(db, new TestTimeProvider(SyncNow), NullLogger<StatusSyncService>.Instance, outbox);
+
     private static StatusSyncService Service(AppDbContext db) =>
-        new(db, new TestTimeProvider(SyncNow), NullLogger<StatusSyncService>.Instance);
+        Service(db, new RecordingOutboxWriter());
+
+    /// <summary>In-test <see cref="IOutboxWriter"/> that records enqueued
+    /// (eventType, aggregateId) pairs so emission can be asserted without the
+    /// dispatcher.</summary>
+    private sealed class RecordingOutboxWriter : IOutboxWriter
+    {
+        public List<(string EventType, Guid AggregateId)> Events { get; } = new();
+        public void Enqueue(string eventType, string aggregateType, Guid aggregateId, object payload)
+            => Events.Add((eventType, aggregateId));
+        public void Flush() { }
+    }
 
     // -- events ---------------------------------------------------------------
 
@@ -154,6 +169,47 @@ public sealed class StatusSyncTests
 
         var second = await Service(db).RunAsync(default);
         Assert.Equal(0, second.TotalChanged);
+    }
+
+    // -- FYI outbox emission --------------------------------------------------
+
+    [Fact]
+    public async Task Events_Transitions_EmitFyiOutboxEvents()
+    {
+        using var db = NewDb();
+        var starting = BuildEvent(start: new(2026, 6, 10), end: new(2026, 6, 30), publishOn: new(2026, 6, 1)); // Upcoming->Active
+        var finishing = BuildEvent(start: new(2026, 6, 1), end: new(2026, 6, 10), publishOn: new(2026, 6, 1)); // Active->Finished
+        db.Events.AddRange(starting, finishing);
+        await db.SaveChangesAsync();
+
+        var writer = new RecordingOutboxWriter();
+        await Service(db, writer).RunAsync(default);
+
+        Assert.Contains((EventEventTypes.Started, starting.Id), writer.Events);
+        Assert.Contains((EventEventTypes.Finished, finishing.Id), writer.Events);
+    }
+
+    [Fact]
+    public async Task Opportunities_Finish_EmitsExpiredEvent_StartDoesNot()
+    {
+        using var db = NewDb();
+        var starting = Opportunity.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Starting", "d",
+            startDate: new(2026, 6, 10), endDate: new(2026, 6, 30), "loc", 24.7m, 46.6m, 1,
+            now: new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
+        var finishing = Opportunity.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Finishing", "d",
+            startDate: new(2026, 6, 1), endDate: new(2026, 6, 10), "loc", 24.7m, 46.6m, 1,
+            now: new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
+        db.Opportunities.AddRange(starting, finishing);
+        await db.SaveChangesAsync();
+
+        var writer = new RecordingOutboxWriter();
+        await Service(db, writer).RunAsync(default);
+
+        // Finish → expired; start → no notification (legacy had none).
+        Assert.Contains((OpportunityEventTypes.Expired, finishing.Id), writer.Events);
+        Assert.DoesNotContain((OpportunityEventTypes.Expired, starting.Id), writer.Events);
     }
 
     // -- helpers --------------------------------------------------------------

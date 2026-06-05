@@ -14,4 +14,11 @@ public static class OpportunityEventTypes
     public const string Ended      = "opportunity.ended";
     public const string Deleted    = "opportunity.deleted";
     public const string Fulfilled  = "opportunity.fulfilled";
+
+    /// <summary>
+    /// Time-driven: the opportunity's end date passed without it being
+    /// filled (status sync MarkFinished). Notifies its applicants (legacy
+    /// <c>OpportunityExpiredNotification</c>).
+    /// </summary>
+    public const string Expired    = "opportunity.expired";
 }

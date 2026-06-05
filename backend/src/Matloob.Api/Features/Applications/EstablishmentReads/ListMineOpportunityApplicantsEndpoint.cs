@@ -112,7 +112,8 @@ public sealed class ListMineOpportunityApplicantsEndpoint
             oppBundle.SuccessCriteria,
             oppBundle.Uploads,
             oppBundle.ApplicantsCount,
-            oppBundle.IsApplied);
+            oppBundle.IsApplied,
+            oppBundle.Event);
 
         var responses = new List<OpportunityApplicationResponse>(applications.Count);
         foreach (var application in applications)

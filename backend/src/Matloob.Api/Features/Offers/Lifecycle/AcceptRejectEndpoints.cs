@@ -10,6 +10,7 @@ using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Offers;
+using Matloob.Domain.Opportunities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Offers.Lifecycle;
@@ -57,6 +58,7 @@ public sealed class UserAcceptOfferEndpoint : EndpointWithoutRequest<OfferRespon
 
         _outbox.Enqueue(OfferEventTypes.Accepted, nameof(Offer), offer.Id,
             new { id = offer.Id, acceptedAt = now, acceptedByUserId = sub });
+        await OfferLifecycleQueries.EnqueuePostAcceptEventsAsync(_db, _outbox, offer, now, ct);
         _outbox.Flush();
         await _db.SaveChangesAsync(ct);
 
@@ -163,6 +165,7 @@ public sealed class EstablishmentAcceptOfferEndpoint : EndpointWithoutRequest<Of
 
         _outbox.Enqueue(OfferEventTypes.Accepted, nameof(Offer), offer.Id,
             new { id = offer.Id, acceptedAt = now, acceptedByEstablishmentId = establishmentId.Value });
+        await OfferLifecycleQueries.EnqueuePostAcceptEventsAsync(_db, _outbox, offer, now, ct);
         _outbox.Flush();
         await _db.SaveChangesAsync(ct);
 
@@ -321,6 +324,42 @@ internal static class OfferLifecycleQueries
         var offer = await db.Offers.FirstOrDefaultAsync(o => o.Id == offerId, ct);
         if (offer is null || offer.SenderEstablishmentId != establishmentId) return null;
         return offer;
+    }
+
+    /// <summary>
+    /// Emits the FYI outbox events that follow an offer acceptance (call after
+    /// the <c>offer.accepted</c> enqueue, before <c>Flush</c>):
+    /// <list type="bullet">
+    ///   <item><c>offer.is_active</c> — always, to the applicant (legacy
+    ///     <c>OfferIsActiveNotification</c>; the contractless model treats
+    ///     accept as "active").</item>
+    ///   <item><c>opportunity.fulfilled</c> — only when this acceptance fills
+    ///     the opportunity's required personnel (legacy event-driven
+    ///     <c>OpportunityFulfilled</c>, not time-based).</item>
+    /// </list>
+    /// </summary>
+    public static async Task EnqueuePostAcceptEventsAsync(
+        AppDbContext db, IOutboxWriter outbox, Offer offer, DateTimeOffset now, CancellationToken ct)
+    {
+        outbox.Enqueue(OfferEventTypes.IsActive, nameof(Offer), offer.Id, new { id = offer.Id, at = now });
+
+        var opp = await db.Opportunities.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == offer.OpportunityId, ct);
+        if (opp is null || opp.RequiredPersonnel <= 0) return;
+
+        // This offer just transitioned to Accepted in-memory (not yet saved),
+        // so count the OTHER active-status offers and add it back in — matches
+        // legacy OpportunitySupport::reachedRequiredPersonnel.
+        var otherActive = await db.Offers.AsNoTracking()
+            .CountAsync(o => o.OpportunityId == offer.OpportunityId
+                          && o.Id != offer.Id
+                          && OfferStatusSets.Active.Contains(o.Status), ct);
+        if (otherActive + 1 >= opp.RequiredPersonnel)
+        {
+            outbox.Enqueue(
+                OpportunityEventTypes.Fulfilled, nameof(Opportunity), opp.Id,
+                new { id = opp.Id, at = now });
+        }
     }
 
     public static bool TryTransition(Action transition, out string error)
