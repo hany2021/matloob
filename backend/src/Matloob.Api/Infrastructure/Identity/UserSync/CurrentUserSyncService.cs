@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Matloob.Api.Features.Establishments.Members.Common;
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Domain.Establishments;
 using Matloob.Domain.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -85,11 +87,13 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
                     firstSeenAt: now);
                 _db.Users.Add(fresh);
                 await _db.SaveChangesAsync(ct);
+                await MaterializeAcceptedInvitationsAsync(sub, email, now, ct);
                 return fresh;
             }
 
             existing.SyncFromIdentity(email, name, phone, now);
             await _db.SaveChangesAsync(ct);
+            await MaterializeAcceptedInvitationsAsync(sub, email, now, ct);
             return existing;
         }
         catch (Exception ex)
@@ -100,6 +104,57 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
                 "Failed to sync local user row for sub={Sub}. Continuing without update.",
                 sub);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Deferred-materialization sweep: the single "this user just appeared"
+    /// hook. After the local users row is upserted for this sub, any
+    /// invitations Accepted for this user's email but not yet materialized
+    /// (the invitee accepted before they had a local row) become
+    /// <see cref="EstablishmentMember"/> rows — but only for establishments
+    /// that are currently Approved (a Suspended establishment's deferred
+    /// accepts wait until it is reinstated, then materialize on a later run).
+    /// </summary>
+    private async Task MaterializeAcceptedInvitationsAsync(
+        string sub, string? email, DateTimeOffset now, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return;
+        }
+
+        var normalizedEmail = EstablishmentInvitation.Normalize(email);
+
+        var pending = await _db.EstablishmentInvitations
+            .Where(i => i.Email == normalizedEmail
+                     && i.Status == EstablishmentInvitationStatus.Accepted
+                     && i.MaterializedMemberId == null)
+            .ToListAsync(ct);
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        var materializedAny = false;
+        foreach (var invitation in pending)
+        {
+            var approved = await _db.Establishments
+                .AsNoTracking()
+                .AnyAsync(e => e.Id == invitation.EstablishmentId
+                            && e.Status == EstablishmentStatus.Approved, ct);
+            if (!approved)
+            {
+                continue; // wait for reinstatement.
+            }
+
+            await InvitationMaterializer.MaterializeAsync(_db, invitation, sub, now, ct);
+            materializedAny = true;
+        }
+
+        if (materializedAny)
+        {
+            await _db.SaveChangesAsync(ct);
         }
     }
 }

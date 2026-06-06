@@ -56,6 +56,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<Establishment> Establishments => Set<Establishment>();
     public DbSet<EstablishmentDocument> EstablishmentDocuments => Set<EstablishmentDocument>();
     public DbSet<EstablishmentMember> EstablishmentMembers => Set<EstablishmentMember>();
+    public DbSet<EstablishmentInvitation> EstablishmentInvitations => Set<EstablishmentInvitation>();
     public DbSet<EstablishmentChangeRequest> EstablishmentChangeRequests => Set<EstablishmentChangeRequest>();
 
     // Establishment profile children: services + products offered.
