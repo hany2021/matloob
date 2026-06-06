@@ -21,7 +21,9 @@ internal static class OfferReadMapper
         AppDbContext db,
         Offer offer,
         DateTimeOffset now,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? viewerUserId = null,
+        Guid? viewerEstablishmentId = null)
     {
         Establishment? sender = await db.Establishments
             .AsNoTracking()
@@ -87,6 +89,27 @@ internal static class OfferReadMapper
             && to < now
             && IsNonTerminal(offer.Status);
 
+        // `evaluated` is viewer-specific: true once THIS viewer has posted their
+        // side's Evaluation for the offer. The offer only reaches Completed once
+        // BOTH sides post (see UserEvaluationEndpoints.MaybeMarkCompleted), so on a
+        // WaitingForEvaluation offer this flag distinguishes "I'm done, waiting on
+        // the counterparty" from "I still owe an evaluation" — exactly what the
+        // contract page keys its prompt on. Endpoints that pass no viewer (action
+        // responses, which don't drive the prompt) get false.
+        var evaluated = false;
+        if (viewerUserId is not null)
+        {
+            evaluated = await db.Evaluations
+                .AsNoTracking()
+                .AnyAsync(e => e.OfferId == offer.Id && e.EvaluatorUserId == viewerUserId, ct);
+        }
+        else if (viewerEstablishmentId is { } viewerEst)
+        {
+            evaluated = await db.Evaluations
+                .AsNoTracking()
+                .AnyAsync(e => e.OfferId == offer.Id && e.EvaluatorEstablishmentId == viewerEst, ct);
+        }
+
         return new OfferResponse
         {
             Id = offer.Id,
@@ -130,7 +153,7 @@ internal static class OfferReadMapper
             LaborerCommitments = offer.LaborerCommitments,
             CreatedAt = offer.CreatedAt.ToString("yyyy-MM-dd"),
             Expired = expired,
-            Evaluated = false, // overlap with evaluations — true after both sides post.
+            Evaluated = evaluated,
             CancelledBy = cancellation is null
                 ? null
                 : cancellation.RequestedByUserId is not null ? "user" : "organization",

@@ -85,7 +85,9 @@ public sealed class OfferResponse
     [JsonPropertyName("expired")]
     public bool Expired { get; init; }
 
-    /// <summary>True when the applicant + sender both have an Evaluation for this offer.</summary>
+    /// <summary>True when the current viewer has already posted their side's
+    /// Evaluation for this offer (set only on viewer-scoped reads). Drives the
+    /// contract page's "you still owe an evaluation" prompt.</summary>
     [JsonPropertyName("evaluated")]
     public bool Evaluated { get; init; }
 

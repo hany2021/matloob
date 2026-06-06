@@ -197,4 +197,64 @@ public sealed class EvaluationLifecycleTests
         Assert.DoesNotContain(doc.RootElement.DataOf().EnumerateArray(),
             e => e.GetProperty("id").GetGuid() == _offerId);
     }
+
+    [Fact]
+    public async Task UserOfferRead_BeforeEvaluation_EvaluatedFalse()
+    {
+        var response = await _factory.CreateClientFor(OaoHelpers.Worker)
+            .GetAsync($"/api/v1/users/offers/{_offerId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.False(doc.RootElement.DataOf().GetProperty("evaluated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task UserOfferRead_AfterWorkerEvaluates_EvaluatedTrue()
+    {
+        await _factory.CreateClientFor(OaoHelpers.Worker)
+            .PostAsJsonAsync("/api/v1/users/evaluations",
+                new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        var response = await _factory.CreateClientFor(OaoHelpers.Worker)
+            .GetAsync($"/api/v1/users/offers/{_offerId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        Assert.True(doc.RootElement.DataOf().GetProperty("evaluated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task OfferRead_EvaluatedIsViewerSpecific()
+    {
+        // The worker evaluates — that is the OTHER side from the establishment's
+        // perspective, so the establishment's own `evaluated` must stay false until
+        // the establishment itself posts. Guards against an "any evaluation exists"
+        // regression that would prematurely clear the counterparty's prompt.
+        await _factory.CreateClientFor(OaoHelpers.Worker)
+            .PostAsJsonAsync("/api/v1/users/evaluations",
+                new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        var owner = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        var before = await owner.GetAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/sent-offers/{_offerId}");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        await using (var s1 = await before.Content.ReadAsStreamAsync())
+        using (var d1 = await JsonDocument.ParseAsync(s1))
+            Assert.False(d1.RootElement.DataOf().GetProperty("evaluated").GetBoolean());
+
+        // Now the establishment posts its own evaluation — its flag flips to true.
+        await owner.PostAsJsonAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/evaluations",
+            new { offer_id = _offerId, rating = 5, recommend_for_future_opportunities = true });
+
+        var after = await owner.GetAsync(
+            $"/api/v1/establishments/{_senderEstablishment}/sent-offers/{_offerId}");
+        await using (var s2 = await after.Content.ReadAsStreamAsync())
+        using (var d2 = await JsonDocument.ParseAsync(s2))
+            Assert.True(d2.RootElement.DataOf().GetProperty("evaluated").GetBoolean());
+    }
 }
