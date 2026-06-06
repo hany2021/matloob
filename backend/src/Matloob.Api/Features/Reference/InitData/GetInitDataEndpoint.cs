@@ -86,13 +86,19 @@ public sealed class GetInitDataEndpoint : EndpointWithoutRequest<InitDataRespons
         var cities = await _db.Cities
             .AsNoTracking()
             .OrderBy(x => x.Name)
-            .Select(x => new CityDto(x.Id, x.Name))
+            .Select(x => new CityDto(x.Id, x.Name, x.RegionId))
             .ToListAsync(ct);
 
         var regions = await _db.Regions
             .AsNoTracking()
             .OrderBy(x => x.Name)
             .Select(x => new RegionDto(x.Id, x.Name))
+            .ToListAsync(ct);
+
+        var districts = await _db.Districts
+            .AsNoTracking()
+            .OrderBy(x => x.Name)
+            .Select(x => new DistrictDto(x.Id, x.Name, x.CityId))
             .ToListAsync(ct);
 
         var languages = await _db.Languages
@@ -239,6 +245,7 @@ public sealed class GetInitDataEndpoint : EndpointWithoutRequest<InitDataRespons
             GroupedOpportunityCategories = groupedCategories,
             Cities = cities,
             Regions = regions,
+            Districts = districts,
             Languages = new LanguagesWrapperDto(languages),
             Banks = banks,
             Seasons = seasons,

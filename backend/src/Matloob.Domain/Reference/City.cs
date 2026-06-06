@@ -10,6 +10,11 @@ namespace Matloob.Domain.Reference;
 public sealed class City : BaseAuditableEntity<Guid>, IAggregateRoot
 {
     public string Name { get; private set; } = string.Empty;
+
+    /// <summary>Owning region (Saudi hierarchy: Region → City → District).
+    /// Nullable so legacy/unmapped cities stay valid until backfilled.</summary>
+    public Guid? RegionId { get; private set; }
+
     public bool IsActive { get; private set; } = true;
 
     private City() { }
@@ -20,4 +25,15 @@ public sealed class City : BaseAuditableEntity<Guid>, IAggregateRoot
         Name = name;
         IsActive = isActive;
     }
+
+    public City(Guid id, string name, Guid? regionId, bool isActive = true)
+    {
+        Id = id;
+        Name = name;
+        RegionId = regionId;
+        IsActive = isActive;
+    }
+
+    /// <summary>Link this city to its region (used by the geography backfill).</summary>
+    public void SetRegion(Guid regionId) => RegionId = regionId;
 }

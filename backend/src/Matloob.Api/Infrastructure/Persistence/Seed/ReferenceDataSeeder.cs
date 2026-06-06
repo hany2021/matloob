@@ -53,6 +53,10 @@ public static class ReferenceDataSeeder
     {
         await SeedCitiesAsync(db, ct);
         await SeedRegionsAsync(db, ct);
+        // Persist base regions + cities first so the geography linker can resolve
+        // them by name (it reads from the DB, not the pending change tracker).
+        await db.SaveChangesAsync(ct);
+        await SeedSaudiGeographyAsync(db, ct);
         await SeedLanguagesAsync(db, ct);
         await SeedNationalitiesAsync(db, ct);
         await SeedBanksAsync(db, ct);
@@ -120,6 +124,68 @@ public static class ReferenceDataSeeder
         foreach (var name in names)
         {
             db.Regions.Add(new Region(Guid.NewGuid(), name));
+        }
+    }
+
+    /// <summary>
+    /// Links cities to their region and seeds districts from
+    /// <c>saudi_geography.json</c> — the Saudi Region → City → District
+    /// hierarchy used by the establishment registration lookups. Idempotent and
+    /// additive: existing cities are linked to a region only when unset, and a
+    /// district is inserted only when that (city, name) pair is missing, so it
+    /// is safe to re-run against a partially-seeded database.
+    /// </summary>
+    private static async Task SeedSaudiGeographyAsync(AppDbContext db, CancellationToken ct)
+    {
+        var geography = LoadJsonArray<GeographyRegion>("saudi_geography.json");
+
+        // Tracked loads — SetRegion on an existing city must persist on save.
+        var regionsByName = await db.Regions.ToDictionaryAsync(r => r.Name, r => r.Id, ct);
+        var citiesByName = await db.Cities.ToDictionaryAsync(c => c.Name, c => c, ct);
+        var districtKeys = (await db.Districts
+                .Select(d => new { d.CityId, d.Name })
+                .ToListAsync(ct))
+            .Select(d => (d.CityId, d.Name))
+            .ToHashSet();
+
+        foreach (var geoRegion in geography)
+        {
+            if (!regionsByName.TryGetValue(geoRegion.Region, out var regionId))
+            {
+                // SeedRegions covers the 13 canonical regions; create any extra
+                // so the hierarchy stays intact rather than dropping its cities.
+                regionId = Guid.NewGuid();
+                db.Regions.Add(new Region(regionId, geoRegion.Region));
+                regionsByName[geoRegion.Region] = regionId;
+            }
+
+            foreach (var geoCity in geoRegion.Cities)
+            {
+                Guid cityId;
+                if (citiesByName.TryGetValue(geoCity.Name, out var existingCity))
+                {
+                    if (existingCity.RegionId is null)
+                    {
+                        existingCity.SetRegion(regionId);
+                    }
+                    cityId = existingCity.Id;
+                }
+                else
+                {
+                    cityId = Guid.NewGuid();
+                    var newCity = new City(cityId, geoCity.Name, regionId);
+                    db.Cities.Add(newCity);
+                    citiesByName[geoCity.Name] = newCity;
+                }
+
+                foreach (var districtName in geoCity.Districts)
+                {
+                    if (districtKeys.Add((cityId, districtName)))
+                    {
+                        db.Districts.Add(new District(Guid.NewGuid(), districtName, cityId));
+                    }
+                }
+            }
         }
     }
 
@@ -591,5 +657,18 @@ public static class ReferenceDataSeeder
         public string Name { get; init; } = string.Empty;
         [System.Text.Json.Serialization.JsonPropertyName("ajeer_id")]
         public int? AjeerId { get; init; }
+    }
+
+    /// <summary>Wire shape for one region block in <c>saudi_geography.json</c>.</summary>
+    private sealed class GeographyRegion
+    {
+        public string Region { get; init; } = string.Empty;
+        public GeographyCity[] Cities { get; init; } = [];
+    }
+
+    private sealed class GeographyCity
+    {
+        public string Name { get; init; } = string.Empty;
+        public string[] Districts { get; init; } = [];
     }
 }

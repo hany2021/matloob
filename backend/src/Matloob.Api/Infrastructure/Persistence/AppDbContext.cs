@@ -32,6 +32,7 @@ public sealed class AppDbContext : DbContext
     // Reference / lookup data
     public DbSet<City> Cities => Set<City>();
     public DbSet<Region> Regions => Set<Region>();
+    public DbSet<District> Districts => Set<District>();
     public DbSet<Language> Languages => Set<Language>();
     public DbSet<Nationality> Nationalities => Set<Nationality>();
     public DbSet<Bank> Banks => Set<Bank>();
@@ -111,7 +112,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<OfferCancellationRequest> OfferCancellationRequests
         => Set<OfferCancellationRequest>();
 
-    // Evaluations (attached to offers, not contracts — Q-EVAL-1).
+    // Evaluations (attached to offers, not contracts â€” Q-EVAL-1).
     public DbSet<Evaluation> Evaluations => Set<Evaluation>();
     public DbSet<EvaluationAsset> EvaluationAssets => Set<EvaluationAsset>();
 

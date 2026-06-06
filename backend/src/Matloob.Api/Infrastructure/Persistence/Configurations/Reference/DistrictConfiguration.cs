@@ -4,24 +4,23 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Matloob.Api.Infrastructure.Persistence.Configurations.Reference;
 
-internal sealed class CityConfiguration : IEntityTypeConfiguration<City>
+internal sealed class DistrictConfiguration : IEntityTypeConfiguration<District>
 {
-    public void Configure(EntityTypeBuilder<City> builder)
+    public void Configure(EntityTypeBuilder<District> builder)
     {
-        builder.ToTable("cities");
+        builder.ToTable("districts");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).ValueGeneratedNever();
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
-        builder.Property(x => x.RegionId);
+        builder.Property(x => x.CityId).IsRequired();
         builder.Property(x => x.IsActive).HasDefaultValue(true);
 
-        // FK to the owning region (no navigation; restrict so a referenced
-        // region can't be hard-deleted out from under its cities).
-        builder.HasOne<Region>()
+        // FK to the owning city (no navigation; restrict to protect references).
+        builder.HasOne<City>()
             .WithMany()
-            .HasForeignKey(x => x.RegionId)
+            .HasForeignKey(x => x.CityId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(x => x.RegionId);
+        builder.HasIndex(x => x.CityId);
 
         // Speed up the init-data WHERE is_active = true filter.
         builder.HasIndex(x => x.IsActive).HasFilter("is_active = true");
