@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
 using Microsoft.EntityFrameworkCore;
@@ -69,6 +70,84 @@ internal static class MembershipChecks
                 m.IsActive,
                 ct);
     }
+
+    /// <summary>
+    /// True if the caller's active role on the establishment grants
+    /// <paramref name="permission"/>. Owner short-circuits to <c>true</c>
+    /// (implicit-all); every other role is checked against
+    /// <see cref="RolePermissions.PermissionsFor"/>. A non-member (no active
+    /// row) returns <c>false</c>.
+    ///
+    /// This is the per-role gate the write endpoints call in place of the
+    /// old <see cref="IsActiveOwnerAsync"/> Owner-only check.
+    /// </summary>
+    public static async Task<bool> HasPermissionAsync(
+        AppDbContext db,
+        Guid establishmentId,
+        string userId,
+        string permission,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            return false;
+        }
+
+        var role = await db.EstablishmentMembers
+            .AsNoTracking()
+            .Where(m =>
+                m.EstablishmentId == establishmentId &&
+                m.UserId == userId &&
+                m.IsActive)
+            .Select(m => (EstablishmentMemberRole?)m.Role)
+            .FirstOrDefaultAsync(ct);
+
+        if (role is null)
+        {
+            return false;
+        }
+
+        if (role.Value == EstablishmentMemberRole.Owner)
+        {
+            return true;
+        }
+
+        return RolePermissions.PermissionsFor(role.Value).Contains(permission);
+    }
+
+    /// <summary>
+    /// The materialized permission set for the caller's active role on the
+    /// establishment (Owner → the full <see cref="Permissions.All"/> union;
+    /// non-member → empty). Used by <c>establishment-list</c> and
+    /// <c>me/profile</c> to surface <c>permissions[]</c> to the client.
+    /// </summary>
+    public static async Task<IReadOnlySet<string>> GetPermissionsAsync(
+        AppDbContext db,
+        Guid establishmentId,
+        string userId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            return EmptyPermissions;
+        }
+
+        var role = await db.EstablishmentMembers
+            .AsNoTracking()
+            .Where(m =>
+                m.EstablishmentId == establishmentId &&
+                m.UserId == userId &&
+                m.IsActive)
+            .Select(m => (EstablishmentMemberRole?)m.Role)
+            .FirstOrDefaultAsync(ct);
+
+        return role is null
+            ? EmptyPermissions
+            : RolePermissions.PermissionsFor(role.Value);
+    }
+
+    private static readonly IReadOnlySet<string> EmptyPermissions =
+        new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
     /// True if removing/demoting/deactivating <paramref name="member"/> would
