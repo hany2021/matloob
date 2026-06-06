@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using FastEndpoints;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
@@ -77,7 +78,7 @@ public sealed class GetMyEstablishmentListEndpoint
         // Active memberships -> their establishments where status is in
         // the read-allowed set (Approved + Suspended; Suspended still
         // permits reads per spec §8).
-        var rows = await (
+        var raw = await (
             from m in _db.EstablishmentMembers.AsNoTracking()
             join e in _db.Establishments.AsNoTracking() on m.EstablishmentId equals e.Id
             where m.UserId == sub
@@ -85,17 +86,30 @@ public sealed class GetMyEstablishmentListEndpoint
                && (e.Status == EstablishmentStatus.Approved
                 || e.Status == EstablishmentStatus.Suspended)
             orderby e.Name
-            select new MyEstablishmentListItem
+            select new
             {
-                Id = e.Id,
-                Name = e.Name,
-                Type = "establishment",
-                Logo = null,
-                LaborOfficeId = e.LaborOfficeId,
-                SequenceNumber = e.SequenceNumber,
-                Status = e.Status.ToString(),
-                Role = m.Role.ToString(),
+                e.Id,
+                e.Name,
+                e.LaborOfficeId,
+                e.SequenceNumber,
+                e.Status,
+                m.Role,
             }).ToListAsync(ct);
+
+        // permissions[] is derived from the role in memory (the role -> slug
+        // map isn't SQL-translatable). Owner gets the full union.
+        var rows = raw.Select(x => new MyEstablishmentListItem
+        {
+            Id = x.Id,
+            Name = x.Name,
+            Type = "establishment",
+            Logo = null,
+            LaborOfficeId = x.LaborOfficeId,
+            SequenceNumber = x.SequenceNumber,
+            Status = x.Status.ToString(),
+            Role = x.Role.ToString(),
+            Permissions = RolePermissions.PermissionsFor(x.Role).OrderBy(p => p).ToArray(),
+        }).ToList();
 
         await Send.OkAsync(rows, ct);
     }
@@ -134,4 +148,12 @@ public sealed class MyEstablishmentListItem
     /// <summary>New-client extension: the caller's role in this establishment.</summary>
     [JsonPropertyName("role")]
     public string Role { get; init; } = string.Empty;
+
+    /// <summary>
+    /// New-client extension: the permission slugs the caller's role grants here
+    /// (Owner = the full union). The frontend's useHasPermission reads this to
+    /// hide actions the active role can't perform.
+    /// </summary>
+    [JsonPropertyName("permissions")]
+    public IReadOnlyList<string> Permissions { get; init; } = Array.Empty<string>();
 }

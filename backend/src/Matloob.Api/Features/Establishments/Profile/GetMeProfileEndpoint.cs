@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
@@ -131,12 +132,14 @@ public sealed class GetMeProfileEndpoint
         }
 
         var isAdmin = MembershipChecks.IsAdmin(HttpContext.User);
-        var isMember = await _db.EstablishmentMembers
+        var activeRole = await _db.EstablishmentMembers
             .AsNoTracking()
-            .AnyAsync(m => m.EstablishmentId == resolvedId
-                       && m.UserId == sub
-                       && m.IsActive, ct);
-        if (!isAdmin && !isMember)
+            .Where(m => m.EstablishmentId == resolvedId
+                     && m.UserId == sub
+                     && m.IsActive)
+            .Select(m => (EstablishmentMemberRole?)m.Role)
+            .FirstOrDefaultAsync(ct);
+        if (!isAdmin && activeRole is null)
         {
             // 404 not 403 — same enumeration-leak policy as the canonical
             // details endpoint.
@@ -145,6 +148,15 @@ public sealed class GetMeProfileEndpoint
         }
 
         var response = await EstablishmentProfileReadMapper.BuildAsync(_db, establishment, ct);
+
+        // New-client extensions: the caller's role + its permission slugs for
+        // this establishment (admins are not members -> null/empty). The
+        // existing establishment-level can_manage_events flag is unchanged.
+        response.ActiveRole = activeRole?.ToString();
+        response.ActivePermissions = activeRole is null
+            ? Array.Empty<string>()
+            : RolePermissions.PermissionsFor(activeRole.Value).OrderBy(p => p).ToArray();
+
         await Send.OkAsync(response, ct);
     }
 
@@ -198,6 +210,22 @@ public sealed class EstablishmentMeProfileResponse
 
     [JsonPropertyName("can_manage_events")]
     public bool CanManageEvents { get; init; }
+
+    /// <summary>
+    /// New-client extension: the caller's role in this establishment
+    /// (null for an admin who isn't a member). Distinct from the
+    /// establishment-level <see cref="CanManageEvents"/> organizer flag.
+    /// </summary>
+    [JsonPropertyName("active_role")]
+    public string? ActiveRole { get; set; }
+
+    /// <summary>
+    /// New-client extension: the permission slugs the caller's role grants here
+    /// (Owner = the full union; empty for admin/non-member). Read by the
+    /// frontend's useHasPermission to gate per-role actions.
+    /// </summary>
+    [JsonPropertyName("active_permissions")]
+    public IReadOnlyList<string> ActivePermissions { get; set; } = Array.Empty<string>();
 }
 
 public sealed class EstablishmentProfileBlock

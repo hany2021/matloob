@@ -113,6 +113,15 @@ public sealed class MeProfileCompatibilityTests
         Assert.Equal(JsonValueKind.Null, data.GetProperty("total_reviews").ValueKind);
         Assert.False(data.GetProperty("can_manage_events").GetBoolean());
 
+        // New-client extensions: the caller's role + permission slugs. The
+        // member was added as Manager (see BuildApprovedEstablishmentWithMember).
+        Assert.Equal("Manager", data.GetProperty("active_role").GetString());
+        var activePerms = data.GetProperty("active_permissions").EnumerateArray()
+            .Select(p => p.GetString()).ToList();
+        Assert.Contains("events.manage", activePerms);
+        Assert.DoesNotContain("members.manage", activePerms);
+        Assert.DoesNotContain("profile.edit", activePerms);
+
         // Profile composite block.
         var profile = data.GetProperty("profile");
         var general = profile.GetProperty("general_info");
