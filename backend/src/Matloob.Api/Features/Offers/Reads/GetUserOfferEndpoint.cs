@@ -61,7 +61,7 @@ public sealed class GetUserOfferEndpoint : EndpointWithoutRequest<OfferResponse>
             return;
         }
 
-        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct);
+        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct, viewerUserId: sub);
         await Send.OkAsync(response, ct);
     }
 }

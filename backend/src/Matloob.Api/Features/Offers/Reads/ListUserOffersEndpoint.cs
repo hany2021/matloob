@@ -51,7 +51,7 @@ public sealed class ListUserOffersEndpoint
         var responses = new List<OfferResponse>(offers.Count);
         foreach (var offer in offers)
         {
-            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct));
+            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct, viewerUserId: sub));
         }
         await Send.OkAsync(responses, ct);
     }

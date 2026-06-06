@@ -63,7 +63,7 @@ public sealed class ListEstablishmentReceivedOffersEndpoint
         var responses = new List<OfferResponse>(offers.Count);
         foreach (var offer in offers)
         {
-            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct));
+            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct, viewerEstablishmentId: establishmentId.Value));
         }
         await Send.OkAsync(responses, ct);
     }
@@ -125,7 +125,7 @@ public sealed class GetEstablishmentReceivedOfferEndpoint
             return;
         }
 
-        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct);
+        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct, viewerEstablishmentId: establishmentId.Value);
         await Send.OkAsync(response, ct);
     }
 }
@@ -181,7 +181,7 @@ public sealed class ListEstablishmentSentOffersEndpoint
         var responses = new List<OfferResponse>(offers.Count);
         foreach (var offer in offers)
         {
-            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct));
+            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct, viewerEstablishmentId: establishmentId.Value));
         }
         await Send.OkAsync(responses, ct);
     }
@@ -233,7 +233,7 @@ public sealed class GetEstablishmentSentOfferEndpoint
             return;
         }
 
-        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct);
+        var response = await OfferReadMapper.MapAsync(_db, offer, _clock.GetUtcNow(), ct, viewerEstablishmentId: establishmentId.Value);
         await Send.OkAsync(response, ct);
     }
 }
@@ -318,7 +318,7 @@ public sealed class ListPendingActionOffersEndpoint
         var responses = new List<OfferResponse>(offers.Count);
         foreach (var offer in offers)
         {
-            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct));
+            responses.Add(await OfferReadMapper.MapAsync(_db, offer, now, ct, viewerEstablishmentId: establishmentId.Value));
         }
         await Send.OkAsync(responses, ct);
     }
