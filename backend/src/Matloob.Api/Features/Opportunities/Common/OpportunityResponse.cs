@@ -229,6 +229,19 @@ public sealed class OpportunityCategoryDto
 
     [JsonPropertyName("is_other")]
     public bool IsOther { get; init; }
+
+    /// <summary>
+    /// Hydrated parent category for child rows. Categories are a 2-level tree;
+    /// children carry the user-facing title (e.g. استقبال) while the parent
+    /// holds the icon (e.g. assets/icons/opportunity_categories/temporary_work.svg).
+    /// The frontend opportunity cards read <c>opportunity_category.parent?.icon
+    /// || opportunity_category.icon</c>, so without this they render the
+    /// fallback bx:party icon for every child-categorized opportunity.
+    /// Null for root-level categories (or when the parent row no longer
+    /// exists).
+    /// </summary>
+    [JsonPropertyName("parent")]
+    public OpportunityCategoryDto? Parent { get; init; }
 }
 
 public sealed class OpportunityUploadDto

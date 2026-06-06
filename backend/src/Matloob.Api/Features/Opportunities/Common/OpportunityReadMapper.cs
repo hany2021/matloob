@@ -81,6 +81,20 @@ internal static class OpportunityReadMapper
                     Icon = category.Icon,
                     ForVacancy = category.ForVacancy,
                     IsOther = category.IsOther,
+                    // 2-level tree; parent carries the icon when the child's
+                    // Icon is blank. Parent's own Parent stays null (we never
+                    // chase further; the legacy data is flat-2-level).
+                    Parent = category.Parent is null
+                        ? null
+                        : new OpportunityCategoryDto
+                        {
+                            Id = category.Parent.Id,
+                            Title = category.Parent.Title,
+                            Description = category.Parent.Description,
+                            Icon = category.Parent.Icon,
+                            ForVacancy = category.Parent.ForVacancy,
+                            IsOther = category.Parent.IsOther,
+                        },
                 },
             Uploads = uploads,
             Applicants = applicants ?? [],

@@ -36,8 +36,13 @@ internal static class OpportunityReadQueries
         Guid? establishmentApplicantId,
         CancellationToken ct)
     {
+        // Hydrate the parent navigation too — categories are a 2-level tree
+        // and the parent carries the icon (children have empty Icon). The
+        // frontend opportunity cards read parent?.icon || icon, so without
+        // this they render the bx:party fallback for every opportunity.
         var category = await db.OpportunityCategories
             .AsNoTracking()
+            .Include(c => c.Parent)
             .FirstOrDefaultAsync(c => c.Id == opportunity.OpportunityCategoryId, ct);
 
         var issuer = await db.Establishments
