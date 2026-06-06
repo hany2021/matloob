@@ -150,6 +150,17 @@ public sealed class CreateOpportunityEndpoint
         }
         catch (JsonException)
         {
+            // A precognition validate ping (e.g. blurring اسم الفرصة) serialises
+            // the whole file-form as JSON, so partially-filled numeric fields
+            // arrive as empty strings that System.Text.Json can't coerce into
+            // decimal?/int?. It's validate-only — acknowledge it (204) instead
+            // of surfacing a spurious 400 on the user. A real (non-precognition)
+            // submit with malformed JSON still gets the 400.
+            if (EventWriteSupport.IsPrecognitive(HttpContext))
+            {
+                await Send.NoContentAsync(ct);
+                return;
+            }
             await ProblemWriter.WriteAsync(
                 HttpContext, StatusCodes.Status400BadRequest,
                 "invalid_json", "Request body is not valid JSON.", ct);

@@ -202,6 +202,45 @@ public sealed class MultipartOpportunityCreateTests
             .TryGetProperty("opportunities.0.start_date", out _));
     }
 
+    [Fact]
+    public async Task Json_PrecognitionPing_EmptyNumericStrings_Returns204_Not400()
+    {
+        var eventId = await SeedEventAsync();
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+
+        // Mirrors the file-form's precognition validate ping (e.g. blurring
+        // اسم الفرصة): the whole form serialises as JSON, and partially-filled
+        // numeric fields arrive as empty strings System.Text.Json can't coerce.
+        // It's validate-only, so it must be a clean 204 — not a 400 invalid_json.
+        var body = new
+        {
+            event_uuid = eventId,
+            opportunities = new[]
+            {
+                new
+                {
+                    opportunity_category_uuid = _nonVacancyCategoryId,
+                    name = "فرصة",
+                    description = "",
+                    start_date = "",
+                    end_date = "",
+                    lat = "",
+                    lon = "",
+                    required_personnel = "",
+                    monthly_salary = "",
+                },
+            },
+        };
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/establishments/me/opportunities")
+        {
+            Content = JsonContent.Create(body),
+        };
+        req.Headers.Add("Precognition", "true");
+
+        var response = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
     // -- helpers --------------------------------------------------------------
 
     private async Task<Guid> SeedEventAsync(DateOnly? start = null, DateOnly? end = null)
