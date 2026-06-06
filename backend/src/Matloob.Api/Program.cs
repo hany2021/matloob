@@ -82,6 +82,12 @@ try
     builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.ISmsSender,
         Matloob.Api.Infrastructure.Notifications.NoOpSmsSender>();
 
+    // Outbound email port for establishment-employee invitations. No real
+    // provider yet (mirrors the SMS no-op above) — NoOpEmailSender logs the
+    // [INVITE] line so the link is recoverable from the API console in dev.
+    builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
+        Matloob.Api.Infrastructure.Notifications.NoOpEmailSender>();
+
     // Outbox subscriber that turns offer events into notifications.
     builder.Services.AddScoped<Matloob.Api.Infrastructure.Events.Dispatcher.IOutboxHandler,
         Matloob.Api.Features.Notifications.Fanout.NotificationOutboxHandler>();
