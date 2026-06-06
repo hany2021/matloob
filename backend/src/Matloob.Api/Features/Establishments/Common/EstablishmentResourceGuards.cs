@@ -38,14 +38,25 @@ internal static class EstablishmentResourceGuards
     }
 
     /// <summary>
-    /// Mutations additionally require the establishment not be suspended (423),
-    /// matching the opportunities write rules.
+    /// Mutations additionally require the caller's active role to hold
+    /// <paramref name="permission"/> (Owner is implicit-all; admins bypass),
+    /// and the establishment not be suspended (423), matching the
+    /// opportunities write rules. A member lacking the permission gets 403,
+    /// distinct from the 404 a non-member gets from the read resolve.
     /// </summary>
     public static async Task<Guid?> ResolveForWriteAsync(
-        AppDbContext db, HttpContext http, string subClaim, CancellationToken ct)
+        AppDbContext db, HttpContext http, string subClaim, string permission, CancellationToken ct)
     {
         var establishmentId = await ResolveForReadAsync(db, http, subClaim, ct);
         if (establishmentId is null) return null;
+
+        if (!MembershipChecks.IsAdmin(http.User) &&
+            !await MembershipChecks.HasPermissionAsync(db, establishmentId.Value, subClaim, permission, ct))
+        {
+            http.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await http.Response.WriteAsync(string.Empty, ct);
+            return null;
+        }
 
         var status = await db.Establishments
             .AsNoTracking()

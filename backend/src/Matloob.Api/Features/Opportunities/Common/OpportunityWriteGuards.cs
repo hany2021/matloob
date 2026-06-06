@@ -18,12 +18,19 @@ internal static class OpportunityWriteGuards
     /// Resolve the establishment context (path / query / header / auto-pick),
     /// confirm the caller is an active member or admin, and reject writes
     /// against a Suspended establishment with 423.
+    ///
+    /// When <paramref name="permission"/> is supplied, the caller must also
+    /// hold that permission slug for their active role (Owner is implicit-all);
+    /// a member lacking it gets 403. When it is <c>null</c> the legacy
+    /// any-active-member rule applies (used by the establishment-as-applicant
+    /// apply endpoint, which the per-role map does not cover).
     /// </summary>
     public static async Task<Guid?> AuthoriseMutationAsync(
         AppDbContext db,
         HttpContext httpContext,
         string subClaim,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? permission = null)
     {
         var establishmentId = await EstablishmentContextHelper
             .ResolveAsync(db, httpContext, subClaim, ct);
@@ -37,6 +44,17 @@ internal static class OpportunityWriteGuards
             if (!isMember)
             {
                 httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+                await httpContext.Response.WriteAsync(string.Empty, ct);
+                return null;
+            }
+
+            // Per-role write gate. A member without the required permission is
+            // forbidden (403), distinct from the 404 a non-member gets above.
+            if (permission is not null &&
+                !await MembershipChecks.HasPermissionAsync(
+                    db, establishmentId.Value, subClaim, permission, ct))
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
                 await httpContext.Response.WriteAsync(string.Empty, ct);
                 return null;
             }

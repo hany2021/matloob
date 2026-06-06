@@ -581,9 +581,14 @@ public sealed class EstablishmentProfileEditTests
         await creator.PostAsync($"/api/v1/establishments/registration/{id}/submit", content: null);
         await admin.PostAsync($"/api/v1/admin/establishments/{id}/approve", content: null);
 
+        // Seed the member as Owner: profile editing is gated on profile.edit,
+        // which only the Owner role holds (a Manager manages events /
+        // opportunities / hiring, not the establishment profile). These tests
+        // exercise the profile-edit mechanics, so they run as the authorized
+        // role. Multiple active Owners are allowed.
         var addResp = await creator.PostAsJsonAsync(
             $"/api/v1/establishments/{id}/members",
-            new { userId = memberSub, role = "Manager" });
+            new { userId = memberSub, role = "Owner" });
         if (addResp.StatusCode != HttpStatusCode.Created
             && addResp.StatusCode != HttpStatusCode.Conflict)
         {

@@ -45,7 +45,7 @@ public sealed class CreateProductEndpoint : Endpoint<ProductUpsertRequest, Produ
     public override async Task HandleAsync(ProductUpsertRequest req, CancellationToken ct)
     {
         var establishmentId = await EstablishmentResourceGuards
-            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
+            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, Infrastructure.Auth.Permissions.Profile.Edit, ct);
         if (establishmentId is null) return;
 
         var product = new Product(Guid.NewGuid(), establishmentId.Value, req.Name!, req.Description!);

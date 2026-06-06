@@ -60,7 +60,7 @@ public sealed class UpdateExperienceEndpoint
         }
 
         var establishmentId = await EstablishmentResourceGuards
-            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
+            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, Infrastructure.Auth.Permissions.Profile.Edit, ct);
         if (establishmentId is null) return;
 
         var establishment = await _db.Establishments

@@ -1,5 +1,6 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
@@ -101,8 +102,8 @@ public sealed class AddMemberEndpoint : Endpoint<AddMemberRequest, AddMemberResp
         var isAdmin = MembershipChecks.IsAdmin(HttpContext.User);
         if (!isAdmin)
         {
-            var isOwner = await MembershipChecks.IsActiveOwnerAsync(
-                _db, id, _currentUser.UserId, ct);
+            var isOwner = await MembershipChecks.HasPermissionAsync(
+                _db, id, _currentUser.UserId, Infrastructure.Auth.Permissions.Members.Manage, ct);
             if (!isOwner)
             {
                 await Send.ForbiddenAsync(ct);

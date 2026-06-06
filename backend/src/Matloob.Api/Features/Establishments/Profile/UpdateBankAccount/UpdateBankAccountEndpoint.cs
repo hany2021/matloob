@@ -62,7 +62,7 @@ public sealed class UpdateBankAccountEndpoint
         }
 
         var establishmentId = await EstablishmentResourceGuards
-            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
+            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, Infrastructure.Auth.Permissions.Profile.Edit, ct);
         if (establishmentId is null) return;
 
         // Reference + IBAN checks (Laravel returned 422 for these).
