@@ -40,7 +40,7 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
     }
 
     [Fact]
-    public async Task GetInitData_ReturnsAllSeventeenTopLevelKeys()
+    public async Task GetInitData_ReturnsAllEighteenTopLevelKeys()
     {
         var root = await GetRootAsync();
 
@@ -57,6 +57,7 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
             "grouped_opportunity_categories",
             "cities",
             "regions",
+            "districts",
             "languages",
             "banks",
             "seasons",
@@ -84,7 +85,11 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
         // Counts come straight from ReferenceDataSeeder. If the seeder changes,
         // update these in lockstep — they document what the public frontend
         // sees on a fresh database.
-        Assert.Equal(21, root.GetProperty("cities").GetArrayLength());
+        // Cities = the 21 base names linked to regions + the extra geography
+        // cities; districts come from saudi_geography.json. Update in lockstep
+        // when that file changes.
+        Assert.Equal(112, root.GetProperty("cities").GetArrayLength());
+        Assert.Equal(293, root.GetProperty("districts").GetArrayLength());
         Assert.Equal(13, root.GetProperty("regions").GetArrayLength());
         Assert.Equal(11, root.GetProperty("banks").GetArrayLength());
         Assert.Equal(16, root.GetProperty("job_titles").GetArrayLength());
@@ -98,6 +103,35 @@ public sealed class InitDataEndpointTests : IClassFixture<InitDataApiFactory>, I
         Assert.Equal(2, root.GetProperty("individuals_opportunity_categories").GetArrayLength());
         Assert.Equal(3, root.GetProperty("cancellation_reasons").GetArrayLength());
         Assert.Equal(4, root.GetProperty("rejection_reasons").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetInitData_Geography_CitiesLinkToRegions_DistrictsToCities()
+    {
+        var root = await GetRootAsync();
+        var regions = root.GetProperty("regions");
+        var cities = root.GetProperty("cities");
+        var districts = root.GetProperty("districts");
+
+        Assert.True(districts.GetArrayLength() > 0, "no districts seeded");
+
+        // Every city carries a region_id that points at a real region — this is
+        // what powers the cascading region → city lookup on the frontend.
+        var regionIds = regions.EnumerateArray().Select(r => r.GetProperty("id").GetGuid()).ToHashSet();
+        foreach (var city in cities.EnumerateArray())
+        {
+            Assert.True(
+                city.TryGetProperty("region_id", out var rid) && rid.ValueKind != JsonValueKind.Null,
+                $"city '{city.GetProperty("name").GetString()}' has no region_id");
+            Assert.Contains(rid.GetGuid(), regionIds);
+        }
+
+        // Every district points at a real city (city → district cascade).
+        var cityIds = cities.EnumerateArray().Select(c => c.GetProperty("id").GetGuid()).ToHashSet();
+        foreach (var district in districts.EnumerateArray())
+        {
+            Assert.Contains(district.GetProperty("city_id").GetGuid(), cityIds);
+        }
     }
 
     [Fact]

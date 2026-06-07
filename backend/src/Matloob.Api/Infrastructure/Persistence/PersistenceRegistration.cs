@@ -24,9 +24,11 @@ public static class PersistenceRegistration
         // abstraction; do not roll our own.
         services.AddSingleton(TimeProvider.System);
 
-        // Interceptors are singletons (stateless apart from injected services).
-        services.AddSingleton<AuditingInterceptor>();
-        services.AddSingleton<SoftDeleteInterceptor>();
+        // Interceptors are scoped because they depend on the scoped ICurrentUser
+        // (which now resolves the per-request user). They're resolved from the
+        // scoped provider in the AddDbContext factory below.
+        services.AddScoped<AuditingInterceptor>();
+        services.AddScoped<SoftDeleteInterceptor>();
 
         var connectionString = configuration.GetConnectionString(ConnectionStringName)
             ?? throw new InvalidOperationException(

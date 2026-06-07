@@ -3,6 +3,7 @@ using System;
 using Matloob.Api.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Matloob.Api.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260606211010_SaudiGeographyLookups")]
+    partial class SaudiGeographyLookups
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3761,14 +3764,6 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("years_of_experience");
 
-                    b.Property<string>("user_type")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("User")
-                        .HasColumnName("user_type");
-
                     b.HasKey("Id")
                         .HasName("pk_users");
 
@@ -3798,10 +3793,6 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_users_region_id");
 
                     b.ToTable("users", (string)null);
-
-                    b.HasDiscriminator<string>("user_type").HasValue("User");
-
-                    b.UseTphMappingStrategy();
                 });
 
             modelBuilder.Entity("Matloob.Domain.Users.UserCertificate", b =>
@@ -4226,13 +4217,6 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasFilter("is_deleted = false");
 
                     b.ToTable("user_skills", (string)null);
-                });
-
-            modelBuilder.Entity("Matloob.Domain.Admins.Admin", b =>
-                {
-                    b.HasBaseType("Matloob.Domain.Users.User");
-
-                    b.HasDiscriminator().HasValue("Admin");
                 });
 
             modelBuilder.Entity("Matloob.Domain.Applications.OpportunityApplication", b =>

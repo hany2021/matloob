@@ -18,8 +18,13 @@ namespace Matloob.Domain.Users;
 /// Inherits <see cref="BaseAuditableEntity{TId}"/> so the audit columns +
 /// soft-delete are wired (a future "user removed by IdM" flow can flip
 /// IsActive=false or soft-delete; both options exist).
+///
+/// TPH base: this maps to the <c>users</c> table with a <c>user_type</c>
+/// discriminator. The base value is <c>"User"</c>; back-office admins are the
+/// derived <see cref="Matloob.Domain.Admins.Admin"/> (<c>"Admin"</c>). Not
+/// sealed so that subtype can derive from it.
 /// </summary>
-public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
+public class User : BaseAuditableEntity<Guid>, IAggregateRoot
 {
     /// <summary>
     /// <c>sub</c> claim value from the IdM JWT. The system-of-record id for
@@ -91,7 +96,27 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
     /// </summary>
     public Guid? BankAccountId { get; private set; }
 
-    private User() { }
+    // Parameterless ctor for EF materialization. protected (not private) so the
+    // derived TPH subtype (Admin) can chain to it.
+    protected User() { }
+
+    /// <summary>
+    /// Constructor for derived TPH subtypes (e.g. <see cref="Matloob.Domain.Admins.Admin"/>)
+    /// that are created directly rather than via <see cref="CreateFromIdentity"/>.
+    /// </summary>
+    protected User(Guid id, string identityId, string? email, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(identityId))
+        {
+            throw new ArgumentException("IdentityId is required.", nameof(identityId));
+        }
+
+        Id = id;
+        IdentityId = identityId;
+        Email = Normalize(email);
+        Name = Normalize(name);
+        IsActive = true;
+    }
 
     /// <summary>
     /// Provisions a new local user row from JWT claims. Called by the sync
@@ -148,6 +173,13 @@ public sealed class User : BaseAuditableEntity<Guid>, IAggregateRoot
 
     public void Deactivate() => IsActive = false;
     public void Reactivate() => IsActive = true;
+
+    /// <summary>Set the display name (used by the admin-management screen). No-op on blank.</summary>
+    public void Rename(string name)
+    {
+        var normalized = Normalize(name);
+        if (normalized is not null) Name = normalized;
+    }
 
     /// <summary>
     /// Mark the user as having completed the public-frontend onboarding

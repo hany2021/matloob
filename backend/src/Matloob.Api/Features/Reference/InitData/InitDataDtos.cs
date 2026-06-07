@@ -9,11 +9,17 @@ namespace Matloob.Api.Features.Reference.InitData;
 
 public sealed record CityDto(
     [property: JsonPropertyName("id")] Guid Id,
-    [property: JsonPropertyName("name")] string Name);
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("region_id")] Guid? RegionId = null);
 
 public sealed record RegionDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("name")] string Name);
+
+public sealed record DistrictDto(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("city_id")] Guid CityId);
 
 public sealed record LanguageDto(
     [property: JsonPropertyName("id")] Guid Id,
@@ -142,6 +148,9 @@ public sealed class InitDataResponse : IBypassEnvelope
 
     [JsonPropertyName("regions")]
     public IReadOnlyList<RegionDto> Regions { get; init; } = [];
+
+    [JsonPropertyName("districts")]
+    public IReadOnlyList<DistrictDto> Districts { get; init; } = [];
 
     [JsonPropertyName("languages")]
     public LanguagesWrapperDto Languages { get; init; } = new(Array.Empty<LanguageDto>());
