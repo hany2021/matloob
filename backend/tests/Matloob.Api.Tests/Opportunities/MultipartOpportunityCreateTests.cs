@@ -241,7 +241,71 @@ public sealed class MultipartOpportunityCreateTests
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Multipart_OperatorWithContract_CanAddToJoinedEvent()
+    {
+        // A second (organizer) establishment owns the event; the test's operator
+        // establishment holds an Accepted offer on one of the event's
+        // opportunities — i.e. it has "joined" the event via a contract, exactly
+        // like GET /establishments/events/joined-events lists it.
+        const string organizerSub = "organizer-joined-evt-sub";
+        await OaoHelpers.SeedLocalUserAsync(_factory, organizerSub);
+        var organizerEst = await OaoHelpers.SeedApprovedEstablishmentAsync(_factory, organizerSub, "CR-ORG-JOINED");
+
+        var eventId = await SeedEventForAsync(organizerEst);
+        var oppId = await OaoHelpers.SeedOpportunityAsync(
+            _factory, organizerEst, forVacancy: false, name: "B2B store", eventId: eventId);
+        var appId = await OaoHelpers.SeedApplicationAsync(
+            _factory, oppId, applicantEstablishmentId: _establishmentId);
+        await OaoHelpers.SeedOfferAsync(
+            _factory, organizerEst, oppId, appId,
+            sentByUserId: organizerSub, status: Matloob.Domain.Offers.OfferStatus.Accepted);
+
+        // The operator adds its own opportunity under the organizer's event.
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        using var form = BuildOpportunityForm(eventId, "Operator staffing", withCriterion: true, withUpload: false);
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var created = await db.Opportunities
+            .SingleAsync(o => o.EventId == eventId && o.Name == "Operator staffing");
+        // Issued by the OPERATOR, attached to the ORGANIZER's event.
+        Assert.Equal(_establishmentId, created.IssuerEstablishmentId);
+    }
+
+    [Fact]
+    public async Task Multipart_ForeignEvent_NoContract_Returns422()
+    {
+        // Same shape but with NO offer/contract — a non-joined establishment
+        // must not be able to add opportunities to a foreign establishment's
+        // event. Guards against the access check being over-relaxed.
+        const string organizerSub = "organizer-no-contract-sub";
+        await OaoHelpers.SeedLocalUserAsync(_factory, organizerSub);
+        var organizerEst = await OaoHelpers.SeedApprovedEstablishmentAsync(_factory, organizerSub, "CR-ORG-NOCONTRACT");
+        var eventId = await SeedEventForAsync(organizerEst);
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        using var form = BuildOpportunityForm(eventId, "Intruder opp", withCriterion: true, withUpload: false);
+        var response = await client.PostAsync("/api/establishments/me/opportunities", form);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.GetProperty("errors").TryGetProperty("event_uuid", out _));
+    }
+
     // -- helpers --------------------------------------------------------------
+
+    private async Task<Guid> SeedEventForAsync(Guid establishmentId)
+    {
+        using var scope = _factory.CreateDbScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var ev = new Event(Guid.NewGuid(), establishmentId, Guid.NewGuid(), "Organizer Event", "An event.", null);
+        db.Events.Add(ev);
+        await db.SaveChangesAsync();
+        return ev.Id;
+    }
 
     private async Task<Guid> SeedEventAsync(DateOnly? start = null, DateOnly? end = null)
     {
