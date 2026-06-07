@@ -26,7 +26,8 @@ internal static class OpportunityReadMapper
         bool? isApplied,
         Matloob.Domain.Events.Event? eventEntity = null,
         IReadOnlyList<object>? applicants = null,
-        int contractsCount = 0)
+        int contractsCount = 0,
+        object? issuerOverride = null)
     {
         return new OpportunityResponse
         {
@@ -102,7 +103,7 @@ internal static class OpportunityReadMapper
             ApplicantsCount = applicantsCount,
             ContractsCount = contractsCount,
             CanEnd = CanEnd(opportunity.Status),
-            Issuer = issuer is null
+            Issuer = issuerOverride ?? (issuer is null
                 ? null
                 : new OpportunityIssuerDto
                 {
@@ -110,7 +111,7 @@ internal static class OpportunityReadMapper
                     Name = issuer.Name,
                     Email = issuer.Email,
                     Logo = null,
-                },
+                }),
             SuccessCriteria = successCriteria
                 .Select(sc => new SuccessCriterionDto
                 {
