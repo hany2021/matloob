@@ -117,7 +117,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<OfferCancellationRequest> OfferCancellationRequests
         => Set<OfferCancellationRequest>();
 
-    // Evaluations (attached to offers, not contracts — Q-EVAL-1).
+    // Evaluations (attached to offers, not contracts â€” Q-EVAL-1).
     public DbSet<Evaluation> Evaluations => Set<Evaluation>();
     public DbSet<EvaluationAsset> EvaluationAssets => Set<EvaluationAsset>();
 
