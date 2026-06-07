@@ -86,6 +86,10 @@ public sealed class OfferLifecycleTests
         using var doc = await JsonDocument.ParseAsync(stream);
         var data = doc.RootElement.DataOf();
         Assert.Equal("pending", data.GetProperty("status").GetString());
+        // The contract-list card renders status_label + status_color straight from
+        // the API, so they must be populated (not the old null placeholders).
+        Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("status_label").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("status_color").GetString()));
         // No Ajeer/contract/invoice fields.
         Assert.False(data.TryGetProperty("contract", out _));
         Assert.False(data.TryGetProperty("contract_type", out _));
