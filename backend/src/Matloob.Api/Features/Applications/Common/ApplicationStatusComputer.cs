@@ -1,4 +1,5 @@
 using Matloob.Api.Infrastructure.Persistence;
+using Matloob.Domain.Offers;
 using Microsoft.EntityFrameworkCore;
 
 namespace Matloob.Api.Features.Applications.Common;
@@ -21,6 +22,23 @@ internal static class ApplicationStatusComputer
     public const string Pending  = "pending";
     public const string Accepted = "accepted";
 
+    /// <summary>
+    /// Offer statuses that make the application "accepted": the applicant was
+    /// actually accepted/hired. A <see cref="OfferStatus.Pending"/> offer (just
+    /// sent, awaiting the applicant) or a Rejected/Expired/Canceled one keeps
+    /// the application "pending". (The legacy port returned "accepted" for ANY
+    /// offer row, which conflated "offer sent" with "accepted" — wrong in the
+    /// new model where offers start in <see cref="OfferStatus.Pending"/>.)
+    /// </summary>
+    private static readonly OfferStatus[] AcceptedOfferStatuses =
+    [
+        OfferStatus.Accepted,
+        OfferStatus.CancellationRequested,
+        OfferStatus.PendingSponsorCancellationApproval,
+        OfferStatus.WaitingForEvaluation,
+        OfferStatus.Completed,
+    ];
+
     public static async Task<IReadOnlyDictionary<Guid, string>> ComputeForApplicationsAsync(
         AppDbContext db,
         IReadOnlyList<Guid> applicationIds,
@@ -33,7 +51,8 @@ internal static class ApplicationStatusComputer
 
         var withOffer = await db.Offers
             .AsNoTracking()
-            .Where(o => applicationIds.Contains(o.ApplicationId))
+            .Where(o => applicationIds.Contains(o.ApplicationId)
+                     && AcceptedOfferStatuses.Contains(o.Status))
             .Select(o => o.ApplicationId)
             .Distinct()
             .ToListAsync(ct);
@@ -49,9 +68,10 @@ internal static class ApplicationStatusComputer
         Guid applicationId,
         CancellationToken ct)
     {
-        var hasOffer = await db.Offers
+        var hasAcceptedOffer = await db.Offers
             .AsNoTracking()
-            .AnyAsync(o => o.ApplicationId == applicationId, ct);
-        return hasOffer ? Accepted : Pending;
+            .AnyAsync(o => o.ApplicationId == applicationId
+                        && AcceptedOfferStatuses.Contains(o.Status), ct);
+        return hasAcceptedOffer ? Accepted : Pending;
     }
 }

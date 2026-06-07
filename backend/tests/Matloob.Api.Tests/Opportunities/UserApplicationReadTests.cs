@@ -86,6 +86,41 @@ public sealed class UserApplicationReadTests
     }
 
     [Fact]
+    public async Task Status_PendingOffer_StaysPending()
+    {
+        // The organizer sent an offer but the applicant hasn't accepted it yet —
+        // the application must NOT flip to "accepted" just because an offer exists.
+        var opp = await OaoHelpers.SeedOpportunityAsync(_factory, _establishmentId, name: "Pending-offer opp");
+        var appId = await OaoHelpers.SeedApplicationAsync(_factory, opp, applicantUserId: OaoHelpers.Worker.Sub);
+        await OaoHelpers.SeedOfferAsync(_factory, _establishmentId, opp, appId,
+            sentByUserId: OaoHelpers.EstablishmentOwner.Sub, status: Matloob.Domain.Offers.OfferStatus.Pending);
+
+        Assert.Equal("pending", await GetApplicationStatusAsync(opp));
+    }
+
+    [Fact]
+    public async Task Status_AcceptedOffer_IsAccepted()
+    {
+        var opp = await OaoHelpers.SeedOpportunityAsync(_factory, _establishmentId, name: "Accepted-offer opp");
+        var appId = await OaoHelpers.SeedApplicationAsync(_factory, opp, applicantUserId: OaoHelpers.Worker.Sub);
+        await OaoHelpers.SeedOfferAsync(_factory, _establishmentId, opp, appId,
+            sentByUserId: OaoHelpers.EstablishmentOwner.Sub, status: Matloob.Domain.Offers.OfferStatus.Accepted);
+
+        Assert.Equal("accepted", await GetApplicationStatusAsync(opp));
+    }
+
+    private async Task<string?> GetApplicationStatusAsync(Guid opportunityId)
+    {
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.GetAsync("/api/users/opportunities/applications");
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var app = doc.RootElement.DataOf().EnumerateArray()
+            .First(e => e.GetProperty("opportunity").GetProperty("id").GetGuid() == opportunityId);
+        return app.GetProperty("status").GetString();
+    }
+
+    [Fact]
     public async Task Show_OwnApplication_Returns200()
     {
         var opp = await OaoHelpers.SeedOpportunityAsync(_factory, _establishmentId, name: "Detail target");
