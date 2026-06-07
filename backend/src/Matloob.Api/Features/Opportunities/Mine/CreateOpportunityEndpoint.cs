@@ -11,6 +11,7 @@ using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Storage;
+using Matloob.Domain.Offers;
 using Matloob.Domain.Opportunities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -426,7 +427,18 @@ public sealed class CreateOpportunityEndpoint
 
         await EventOpportunitiesSupport.ValidateAsync(_db, items, errors, ct, ev?.StartDate, ev?.EndDate);
 
-        if (eventId != Guid.Empty && (ev is null || ev.EstablishmentId != establishmentId))
+        // The event must be one the establishment can act on: either it owns the
+        // event, OR it has "joined" the event via a contract — an accepted/
+        // awaiting-evaluation/completed offer on one of the event's
+        // opportunities. This mirrors ListJoinedEventsEndpoint, which is exactly
+        // what feeds the create-opportunity event picker, so a contracted
+        // operator can add its own opportunities (issued by the operator) under
+        // the organizer's event.
+        var eventAccessible = ev is not null
+            && (ev.EstablishmentId == establishmentId
+                || await HasJoinedEventAsync(eventId, establishmentId, ct));
+
+        if (eventId != Guid.Empty && !eventAccessible)
             errors.Add(("event_uuid", "Event not found."));
 
         if (errors.Count > 0)
@@ -471,6 +483,27 @@ public sealed class CreateOpportunityEndpoint
             responses.Add(await BuildResponseAsync(opp, establishmentId, ct));
         await Send.ResponseAsync(responses, StatusCodes.Status201Created, ct);
     }
+
+    // Offer statuses that count as an active contract for "joined event"
+    // access — identical to ListJoinedEventsEndpoint so the create check and
+    // the event picker agree.
+    private static readonly OfferStatus[] JoinedOfferStatuses =
+        [OfferStatus.Accepted, OfferStatus.WaitingForEvaluation, OfferStatus.Completed];
+
+    /// <summary>
+    /// True when the establishment has joined the event through a contract: an
+    /// accepted/awaiting-evaluation/completed offer on one of the event's
+    /// opportunities (where the establishment is the applicant). Lets a
+    /// contracted operator add opportunities under the organizer's event.
+    /// </summary>
+    private Task<bool> HasJoinedEventAsync(Guid eventId, Guid establishmentId, CancellationToken ct) =>
+        (from app in _db.OpportunityApplications.AsNoTracking()
+         where app.ApplicantEstablishmentId == establishmentId
+         join off in _db.Offers.AsNoTracking() on app.Id equals off.ApplicationId
+         where JoinedOfferStatuses.Contains(off.Status)
+         join opp in _db.Opportunities.AsNoTracking() on app.OpportunityId equals opp.Id
+         where opp.EventId == eventId
+         select app.Id).AnyAsync(ct);
 
     private async Task<OpportunityResponse> BuildResponseAsync(
         Opportunity opportunity,
