@@ -25,7 +25,8 @@ internal static class OpportunityReadMapper
         int applicantsCount,
         bool? isApplied,
         Matloob.Domain.Events.Event? eventEntity = null,
-        IReadOnlyList<object>? applicants = null)
+        IReadOnlyList<object>? applicants = null,
+        int contractsCount = 0)
     {
         return new OpportunityResponse
         {
@@ -99,6 +100,7 @@ internal static class OpportunityReadMapper
             Uploads = uploads,
             Applicants = applicants ?? [],
             ApplicantsCount = applicantsCount,
+            ContractsCount = contractsCount,
             CanEnd = CanEnd(opportunity.Status),
             Issuer = issuer is null
                 ? null

@@ -1,5 +1,6 @@
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Establishments;
+using Matloob.Domain.Offers;
 using Matloob.Domain.Opportunities;
 using Matloob.Domain.Reference;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,16 @@ internal static class OpportunityReadQueries
             .AsNoTracking()
             .CountAsync(app => app.OpportunityId == opportunity.Id, ct);
 
+        // contracts_count = filled positions. An accepted offer IS the contract
+        // in the new model, so count offers in the active set (Accepted /
+        // CancellationRequested / PendingSponsorCancellationApproval) — the same
+        // set OpportunitySupport::reachedRequiredPersonnel uses. The frontend
+        // cards derive "vacancies left" = required_personnel − contracts_count.
+        var contractsCount = await db.Offers
+            .AsNoTracking()
+            .CountAsync(o => o.OpportunityId == opportunity.Id
+                          && OfferStatusSets.Active.Contains(o.Status), ct);
+
         // The frontend dereferences `opportunity.event.*` unguarded on every
         // opportunity card / detail / application / evaluation screen, so the
         // owning event is part of the standard sidecar — hydrate it here once
@@ -114,7 +125,8 @@ internal static class OpportunityReadQueries
             uploads,
             applicantsCount,
             isApplied,
-            eventEntity);
+            eventEntity,
+            contractsCount);
     }
 }
 
@@ -126,4 +138,5 @@ internal sealed record OpportunityReadBundle(
     IReadOnlyList<OpportunityUploadDto> Uploads,
     int ApplicantsCount,
     bool? IsApplied,
-    Matloob.Domain.Events.Event? Event);
+    Matloob.Domain.Events.Event? Event,
+    int ContractsCount = 0);

@@ -146,6 +146,13 @@ public sealed class OpportunityResponse
     [JsonPropertyName("applicants_count")]
     public int ApplicantsCount { get; init; }
 
+    /// <summary>Filled positions = active (Accepted/cancellation-pending) offers
+    /// on the opportunity. An accepted offer is the contract in the new model,
+    /// so this restores the legacy <c>contracts_count</c> the cards use to
+    /// compute "vacancies left" = required_personnel − contracts_count.</summary>
+    [JsonPropertyName("contracts_count")]
+    public int ContractsCount { get; init; }
+
     [JsonPropertyName("can_end")]
     public bool CanEnd { get; init; }
 

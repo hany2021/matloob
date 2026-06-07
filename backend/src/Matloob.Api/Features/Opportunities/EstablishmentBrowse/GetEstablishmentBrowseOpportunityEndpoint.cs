@@ -100,7 +100,8 @@ public sealed class GetEstablishmentBrowseOpportunityEndpoint
             bundle.Uploads,
             bundle.ApplicantsCount,
             bundle.IsApplied,
-            bundle.Event);
+            bundle.Event,
+            contractsCount: bundle.ContractsCount);
         await Send.OkAsync(response, ct);
     }
 }

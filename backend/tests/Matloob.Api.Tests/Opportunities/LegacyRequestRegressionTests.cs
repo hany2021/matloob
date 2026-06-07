@@ -298,6 +298,9 @@ public sealed class LegacyRequestRegressionTests
         using var doc = JsonDocument.Parse(json);
         foreach (var key in EnumerateKeys(doc.RootElement))
         {
+            // contracts_count (filled positions) substring-matches "contract"
+            // but is a legitimate frontend field, not the dropped Ajeer concept.
+            if (key.Equals("contracts_count", StringComparison.OrdinalIgnoreCase)) continue;
             var lower = key.ToLowerInvariant();
             foreach (var bad in ForbiddenSubstrings)
             {

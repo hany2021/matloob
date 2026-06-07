@@ -20,9 +20,16 @@ public sealed class OaoReadCompatibilitySweepTests
     private static readonly string[] ForbiddenSubstrings =
     [
         "ajeer",
-        "contract", // intentionally bans contract_path / contracts_count / contract object
+        "contract", // bans Ajeer's contract_path / contract object (see AllowedKeys)
         "invoice",
     ];
+
+    // `contracts_count` substring-matches the "contract" ban, but it's a
+    // legitimate frontend field — filled positions (active offers), the
+    // opportunity card's "vacancies left" input — not the dropped Ajeer
+    // contract concept. Exempt it explicitly.
+    private static readonly HashSet<string> AllowedKeys =
+        new(StringComparer.OrdinalIgnoreCase) { "contracts_count" };
 
     private readonly OpportunitiesApiFactory _factory;
     private Guid _ownEstablishment;
@@ -217,6 +224,7 @@ public sealed class OaoReadCompatibilitySweepTests
         using var doc = JsonDocument.Parse(json);
         foreach (var key in EnumerateKeys(doc.RootElement))
         {
+            if (AllowedKeys.Contains(key)) continue;
             var lower = key.ToLowerInvariant();
             foreach (var bad in ForbiddenSubstrings)
             {
