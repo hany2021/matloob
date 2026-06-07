@@ -21,8 +21,8 @@ import { ApiErrorService } from '../../core/http/api-error.service';
   template: `
     <div class="page">
       <header class="page-header">
-        <h1>Pending change requests</h1>
-        <p class="muted">Edits submitted by approved establishments.</p>
+        <h1>طلبات التعديل المعلّقة</h1>
+        <p class="muted">التعديلات المقدّمة من المنشآت المعتمدة.</p>
       </header>
 
       <app-loading *ngIf="loading()" />
@@ -30,16 +30,16 @@ import { ApiErrorService } from '../../core/http/api-error.service';
       <ng-container *ngIf="!loading()">
         <app-empty-state
           *ngIf="!rows().length"
-          heading="No change requests"
-          message="Submitted change requests will appear here, oldest first."
+          heading="لا توجد طلبات تعديل"
+          message="ستظهر طلبات التعديل المقدّمة هنا، الأقدم أولاً."
         />
         <table class="table" *ngIf="rows().length">
           <thead>
             <tr>
-              <th>Establishment</th>
-              <th>CR number</th>
-              <th>Submitted</th>
-              <th>Submitted by</th>
+              <th>المنشأة</th>
+              <th>رقم السجل التجاري</th>
+              <th>تاريخ التقديم</th>
+              <th>مقدّم الطلب</th>
               <th></th>
             </tr>
           </thead>
@@ -50,8 +50,8 @@ import { ApiErrorService } from '../../core/http/api-error.service';
               <td>{{ r.submittedAt | date: 'medium' }}</td>
               <td class="mono">{{ r.createdByUserId }}</td>
               <td class="actions">
-                <button class="btn" (click)="onApprove(r)" [disabled]="busy() === r.id">Approve</button>
-                <button class="btn btn-danger" (click)="onReject(r)" [disabled]="busy() === r.id">Reject</button>
+                <button class="btn" (click)="onApprove(r)" [disabled]="busy() === r.id">موافقة</button>
+                <button class="btn btn-danger" (click)="onReject(r)" [disabled]="busy() === r.id">رفض</button>
               </td>
             </tr>
           </tbody>
@@ -91,20 +91,20 @@ export class ChangeRequestQueueComponent implements OnInit {
 
   async onApprove(item: PendingChangeRequestItem): Promise<void> {
     const ok = await this.dialog.confirm({
-      title: `Approve change request for ${item.establishmentName}?`,
-      message: 'The proposed values will be applied to the establishment record.',
-      confirmLabel: 'Approve',
+      title: `هل تريد الموافقة على طلب تعديل ${item.establishmentName}؟`,
+      message: 'سيتم تطبيق القيم المقترحة على سجل المنشأة.',
+      confirmLabel: 'موافقة',
     });
     if (!ok) return;
     this.busy.set(item.id);
     this.service.approveChangeRequest(item.id).subscribe({
       next: () => {
-        this.toast.success('Change request approved.');
+        this.toast.success('تمت الموافقة على طلب التعديل.');
         this.busy.set(null);
         this.rows.update((list) => list.filter((r) => r.id !== item.id));
       },
       error: (err) => {
-        this.apiError.notify(err, 'Approve failed');
+        this.apiError.notify(err, 'فشلت الموافقة');
         this.busy.set(null);
       },
     });
@@ -112,25 +112,25 @@ export class ChangeRequestQueueComponent implements OnInit {
 
   async onReject(item: PendingChangeRequestItem): Promise<void> {
     const proceed = await this.dialog.confirm({
-      title: `Reject change request for ${item.establishmentName}?`,
+      title: `هل تريد رفض طلب تعديل ${item.establishmentName}؟`,
       kind: 'danger',
-      confirmLabel: 'Continue',
+      confirmLabel: 'متابعة',
     });
     if (!proceed) return;
-    const reason = window.prompt('Reason (required, ≤2000 chars):');
+    const reason = window.prompt('السبب (مطلوب، 2000 حرف كحد أقصى):');
     if (!reason || !reason.trim()) {
-      this.toast.warning('Reason is required.');
+      this.toast.warning('السبب مطلوب.');
       return;
     }
     this.busy.set(item.id);
     this.service.rejectChangeRequest(item.id, reason.trim()).subscribe({
       next: () => {
-        this.toast.success('Change request rejected.');
+        this.toast.success('تم رفض طلب التعديل.');
         this.busy.set(null);
         this.rows.update((list) => list.filter((r) => r.id !== item.id));
       },
       error: (err) => {
-        this.apiError.notify(err, 'Reject failed');
+        this.apiError.notify(err, 'فشل الرفض');
         this.busy.set(null);
       },
     });

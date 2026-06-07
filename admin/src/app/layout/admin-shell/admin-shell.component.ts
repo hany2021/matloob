@@ -21,14 +21,15 @@ export class AdminShellComponent implements OnInit {
   protected readonly auth = inject(AuthService);
   protected readonly profileService = inject(ProfileService);
 
+  // Admin-only panel: matches the legacy Filament admin's administrative
+  // scope. The establishment/operator surfaces (profile, establishments,
+  // opportunities, offers, evaluations) are intentionally NOT navigable here
+  // — their components remain on disk but are unrouted (see app.routes.ts).
   protected readonly nav = [
-    { path: '/dashboard', label: 'Dashboard', icon: '⌂' },
-    { path: '/profile', label: 'My profile', icon: '◔' },
-    { path: '/establishments', label: 'Establishments', icon: '◬' },
-    { path: '/admin/review-queue', label: 'Review queue', icon: '⚑', adminOnly: true },
-    { path: '/opportunities', label: 'Opportunities', icon: '◇' },
-    { path: '/offers', label: 'Offers', icon: '◈' },
-    { path: '/evaluations', label: 'Evaluations', icon: '✦' },
+    { path: '/dashboard', label: 'لوحة التحكم', icon: '⌂' },
+    { path: '/admin/review-queue', label: 'طلبات المراجعة', icon: '⚑', adminOnly: true },
+    { path: '/admin/change-requests', label: 'طلبات التعديل', icon: '⮂', adminOnly: true },
+    { path: '/admin/admins', label: 'المستخدمون', icon: '◔', adminOnly: true },
   ];
 
   ngOnInit(): void {
@@ -49,10 +50,5 @@ export class AdminShellComponent implements OnInit {
   protected logout() {
     this.auth.logout();
     this.profileService.clear();
-  }
-
-  protected onEstablishmentChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.profileService.setActiveEstablishment(value || null);
   }
 }

@@ -7,7 +7,7 @@ import { AuthService } from '../core/auth/auth.service';
   standalone: true,
   template: `
     <div class="callback-page">
-      <p class="muted">Completing sign-in…</p>
+      <p class="muted">جارٍ إكمال تسجيل الدخول…</p>
     </div>
   `,
   styles: [

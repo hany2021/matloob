@@ -25,11 +25,11 @@ import { ApiErrorService } from '../../core/http/api-error.service';
   template: `
     <div class="page">
       <header class="page-header">
-        <a class="muted" [routerLink]="['/admin/review-queue']">← Review queue</a>
-        <h1>{{ detail()?.name ?? 'Review' }}</h1>
+        <a class="muted" [routerLink]="['/admin/review-queue']">→ طلبات المراجعة</a>
+        <h1>{{ detail()?.name ?? 'مراجعة' }}</h1>
         <p class="muted" *ngIf="detail() as d">
           <span class="badge">{{ d.status }}</span>
-          <span> · CR {{ d.commercialRegistrationNumber }}</span>
+          <span> · السجل التجاري {{ d.commercialRegistrationNumber }}</span>
         </p>
       </header>
 
@@ -42,59 +42,59 @@ import { ApiErrorService } from '../../core/http/api-error.service';
             *ngIf="d.status === 'PendingReview'"
             (click)="onApprove()"
             [disabled]="busy()"
-          >Approve</button>
+          >موافقة</button>
           <button
             class="btn btn-danger"
             *ngIf="d.status === 'PendingReview'"
             (click)="onReject()"
             [disabled]="busy()"
-          >Reject</button>
+          >رفض</button>
           <button
             class="btn btn-danger"
             *ngIf="d.status === 'Approved'"
             (click)="onSuspend()"
             [disabled]="busy()"
-          >Suspend</button>
+          >إيقاف</button>
           <button
             class="btn"
             *ngIf="d.status === 'Suspended'"
             (click)="onReinstate()"
             [disabled]="busy()"
-          >Reinstate</button>
+          >إعادة التفعيل</button>
         </section>
 
         <section class="card">
-          <h2>Profile</h2>
+          <h2>البيانات</h2>
           <dl class="kv">
-            <div><dt>Email</dt><dd>{{ d.email }}</dd></div>
-            <div><dt>Phone</dt><dd>{{ d.phone }}</dd></div>
-            <div><dt>Labor office</dt><dd>{{ d.laborOfficeId }}</dd></div>
-            <div><dt>Sequence</dt><dd>{{ d.sequenceNumber }}</dd></div>
-            <div><dt>City</dt><dd>{{ d.city }}</dd></div>
-            <div><dt>District</dt><dd>{{ d.district ?? '—' }}</dd></div>
-            <div><dt>Economic activity</dt><dd>{{ d.economicActivity ?? '—' }}</dd></div>
-            <div><dt>Sub activity</dt><dd>{{ d.subEconomicActivity ?? '—' }}</dd></div>
-            <div><dt>Years of experience</dt><dd>{{ d.yearsOfExperience ?? '—' }}</dd></div>
-            <div><dt>CR expiry</dt><dd>{{ d.commercialRegistrationExpiry ?? '—' }}</dd></div>
-            <div><dt>Submitted</dt><dd>{{ d.submittedAt | date: 'medium' }}</dd></div>
-            <div *ngIf="d.rejectedAt"><dt>Rejected</dt><dd>{{ d.rejectedAt | date: 'medium' }}</dd></div>
-            <div *ngIf="d.rejectionReason" class="full"><dt>Reject reason</dt><dd>{{ d.rejectionReason }}</dd></div>
-            <div *ngIf="d.suspendedAt"><dt>Suspended</dt><dd>{{ d.suspendedAt | date: 'medium' }}</dd></div>
-            <div *ngIf="d.suspensionReason" class="full"><dt>Suspension reason</dt><dd>{{ d.suspensionReason }}</dd></div>
+            <div><dt>البريد الإلكتروني</dt><dd>{{ d.email }}</dd></div>
+            <div><dt>رقم الجوال</dt><dd>{{ d.phone }}</dd></div>
+            <div><dt>مكتب العمل</dt><dd>{{ d.laborOfficeId }}</dd></div>
+            <div><dt>الرقم التسلسلي</dt><dd>{{ d.sequenceNumber }}</dd></div>
+            <div><dt>المدينة</dt><dd>{{ d.city }}</dd></div>
+            <div><dt>الحي</dt><dd>{{ d.district ?? '—' }}</dd></div>
+            <div><dt>النشاط الاقتصادي</dt><dd>{{ d.economicActivity ?? '—' }}</dd></div>
+            <div><dt>النشاط الفرعي</dt><dd>{{ d.subEconomicActivity ?? '—' }}</dd></div>
+            <div><dt>سنوات الخبرة</dt><dd>{{ d.yearsOfExperience ?? '—' }}</dd></div>
+            <div><dt>انتهاء السجل التجاري</dt><dd>{{ d.commercialRegistrationExpiry ?? '—' }}</dd></div>
+            <div><dt>تاريخ التقديم</dt><dd>{{ d.submittedAt | date: 'medium' }}</dd></div>
+            <div *ngIf="d.rejectedAt"><dt>تاريخ الرفض</dt><dd>{{ d.rejectedAt | date: 'medium' }}</dd></div>
+            <div *ngIf="d.rejectionReason" class="full"><dt>سبب الرفض</dt><dd>{{ d.rejectionReason }}</dd></div>
+            <div *ngIf="d.suspendedAt"><dt>تاريخ الإيقاف</dt><dd>{{ d.suspendedAt | date: 'medium' }}</dd></div>
+            <div *ngIf="d.suspensionReason" class="full"><dt>سبب الإيقاف</dt><dd>{{ d.suspensionReason }}</dd></div>
           </dl>
         </section>
 
         <section class="card" *ngIf="d.documents.length">
-          <h2>Documents</h2>
+          <h2>المستندات</h2>
           <table class="table">
-            <thead><tr><th>Type</th><th>Uploaded</th><th></th></tr></thead>
+            <thead><tr><th>النوع</th><th>تاريخ الرفع</th><th></th></tr></thead>
             <tbody>
               <tr *ngFor="let doc of d.documents">
                 <td>{{ doc.documentType }}</td>
                 <td>{{ doc.uploadedAt | date: 'medium' }}</td>
                 <td class="doc-actions">
-                  <button class="btn btn-ghost" (click)="assets.openInNewTab(doc.assetId)">Preview</button>
-                  <button class="btn btn-ghost" (click)="assets.saveAs(doc.assetId, doc.documentType)">Download</button>
+                  <button class="btn btn-ghost" (click)="assets.openInNewTab(doc.assetId)">معاينة</button>
+                  <button class="btn btn-ghost" (click)="assets.saveAs(doc.assetId, doc.documentType)">تنزيل</button>
                 </td>
               </tr>
             </tbody>
@@ -102,12 +102,12 @@ import { ApiErrorService } from '../../core/http/api-error.service';
         </section>
 
         <section class="card" *ngIf="history().length">
-          <h2>Review history</h2>
+          <h2>سجل المراجعة</h2>
           <ul class="timeline">
             <li *ngFor="let h of history()">
               <strong>{{ h.action }}</strong>
               <span class="muted"> · {{ h.occurredAt | date: 'medium' }}</span>
-              <div *ngIf="h.reason" class="muted">Reason: {{ h.reason }}</div>
+              <div *ngIf="h.reason" class="muted">السبب: {{ h.reason }}</div>
             </li>
           </ul>
         </section>
@@ -171,54 +171,54 @@ export class ReviewDetailComponent implements OnInit {
 
   async onApprove(): Promise<void> {
     const ok = await this.dialog.confirm({
-      title: 'Approve this establishment?',
-      message: 'They will gain full access immediately.',
-      confirmLabel: 'Approve',
+      title: 'هل تريد الموافقة على هذه المنشأة؟',
+      message: 'ستحصل على صلاحية الوصول الكامل فوراً.',
+      confirmLabel: 'موافقة',
     });
     if (!ok) return;
     this.busy.set(true);
     this.service.approve(this.id()).subscribe({
       next: () => {
-        this.toast.success('Approved.');
+        this.toast.success('تمت الموافقة.');
         this.busy.set(false);
         this.reload();
       },
       error: (err) => {
-        this.apiError.notify(err, 'Approve failed');
+        this.apiError.notify(err, 'فشلت الموافقة');
         this.busy.set(false);
       },
     });
   }
 
   async onReject(): Promise<void> {
-    const reason = await this.promptReason('Reject this establishment?');
+    const reason = await this.promptReason('هل تريد رفض هذه المنشأة؟');
     if (!reason) return;
     this.busy.set(true);
     this.service.reject(this.id(), reason).subscribe({
       next: () => {
-        this.toast.success('Rejected.');
+        this.toast.success('تم الرفض.');
         this.busy.set(false);
         this.reload();
       },
       error: (err) => {
-        this.apiError.notify(err, 'Reject failed');
+        this.apiError.notify(err, 'فشل الرفض');
         this.busy.set(false);
       },
     });
   }
 
   async onSuspend(): Promise<void> {
-    const reason = await this.promptReason('Suspend this establishment?');
+    const reason = await this.promptReason('هل تريد إيقاف هذه المنشأة؟');
     if (!reason) return;
     this.busy.set(true);
     this.service.suspend(this.id(), reason).subscribe({
       next: () => {
-        this.toast.success('Suspended.');
+        this.toast.success('تم الإيقاف.');
         this.busy.set(false);
         this.reload();
       },
       error: (err) => {
-        this.apiError.notify(err, 'Suspend failed');
+        this.apiError.notify(err, 'فشل الإيقاف');
         this.busy.set(false);
       },
     });
@@ -226,30 +226,30 @@ export class ReviewDetailComponent implements OnInit {
 
   async onReinstate(): Promise<void> {
     const ok = await this.dialog.confirm({
-      title: 'Reinstate this establishment?',
-      confirmLabel: 'Reinstate',
+      title: 'هل تريد إعادة تفعيل هذه المنشأة؟',
+      confirmLabel: 'إعادة التفعيل',
     });
     if (!ok) return;
     this.busy.set(true);
     this.service.reinstate(this.id()).subscribe({
       next: () => {
-        this.toast.success('Reinstated.');
+        this.toast.success('تمت إعادة التفعيل.');
         this.busy.set(false);
         this.reload();
       },
       error: (err) => {
-        this.apiError.notify(err, 'Reinstate failed');
+        this.apiError.notify(err, 'فشلت إعادة التفعيل');
         this.busy.set(false);
       },
     });
   }
 
   private async promptReason(title: string): Promise<string | null> {
-    const proceed = await this.dialog.confirm({ title, kind: 'danger', confirmLabel: 'Continue' });
+    const proceed = await this.dialog.confirm({ title, kind: 'danger', confirmLabel: 'متابعة' });
     if (!proceed) return null;
-    const reason = window.prompt('Reason (required, ≤2000 chars):');
+    const reason = window.prompt('السبب (مطلوب، 2000 حرف كحد أقصى):');
     if (!reason || !reason.trim()) {
-      this.toast.warning('Reason is required.');
+      this.toast.warning('السبب مطلوب.');
       return null;
     }
     return reason.trim();

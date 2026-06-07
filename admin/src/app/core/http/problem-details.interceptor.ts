@@ -25,6 +25,12 @@ export const problemDetailsInterceptor: HttpInterceptorFn = (req, next) => {
 
       const problem = parseProblemDetails(err);
 
+      // Callers can opt out of the cross-cutting toast/redirect (e.g. the admin
+      // route guard, which handles its own 403 by routing to /auth/forbidden).
+      if (req.headers.has('X-Suppress-Error-Toast')) {
+        return throwError(() => problem);
+      }
+
       switch (err.status) {
         case 0:
           toast.error(
@@ -34,6 +40,16 @@ export const problemDetailsInterceptor: HttpInterceptorFn = (req, next) => {
           break;
         case 401:
           auth.startLogin(router.url);
+          break;
+        case 403:
+          // Authenticated but not allowed — most importantly a deactivated
+          // admin (is_active=false on the server) whose token still carries
+          // matloob_admin. Surface a clear "not permitted" message.
+          toast.error(
+            'غير مسموح',
+            problem.detail ??
+              'ليس لديك صلاحية للقيام بهذا الإجراء. قد يكون حسابك غير مفعّل.',
+          );
           break;
         case 423:
           toast.warning(
@@ -53,7 +69,7 @@ export const problemDetailsInterceptor: HttpInterceptorFn = (req, next) => {
           );
           break;
         default:
-          // 400/403/404/409/422 are surfaced as inline UI by the caller;
+          // 400/404/409/422 are surfaced as inline UI by the caller;
           // we don't double-toast them.
           break;
       }

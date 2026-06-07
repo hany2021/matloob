@@ -8,12 +8,12 @@ import { AuthService } from '../core/auth/auth.service';
   template: `
     <div class="login-page">
       <div class="card login-card">
-        <h1>Matloob Admin</h1>
+        <h1>مطلوب — لوحة الإدارة</h1>
         <p class="muted">
-          Sign in with your IdentityServer account to continue.
+          سجّل الدخول بحساب IdentityServer للمتابعة.
         </p>
         <button type="button" class="btn" (click)="signIn()">
-          Sign in
+          تسجيل الدخول
         </button>
       </div>
     </div>
