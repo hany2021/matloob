@@ -103,6 +103,9 @@ public sealed class MeProfileCompatibilityTests
         Assert.Equal(id, data.GetProperty("id").GetGuid());
         Assert.False(string.IsNullOrEmpty(data.GetProperty("name").GetString()));
         Assert.False(string.IsNullOrEmpty(data.GetProperty("email").GetString()));
+        // Top-level lifecycle status (the public frontend gates Approved-only
+        // screens like employee management on this exact field).
+        Assert.Equal("Approved", data.GetProperty("status").GetString());
         // 5 sections × 20% (legacy EstablishmentSupport formula). This freshly
         // approved establishment only has general-info populated (city) — no
         // services/products, additional contact number, bank account, or

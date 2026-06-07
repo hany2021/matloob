@@ -130,6 +130,7 @@ public static class EstablishmentProfileReadMapper
             Id = e.Id,
             Name = e.Name,
             Email = e.Email,
+            Status = e.Status.ToString(),
             ProfileCompletePercentage = ComputeCompletePercentage(e, services, products, bankAccount),
             Logo = logoUrl,
             Profile = profile,

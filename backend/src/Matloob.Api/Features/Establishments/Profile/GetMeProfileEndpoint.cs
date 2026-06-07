@@ -193,6 +193,16 @@ public sealed class EstablishmentMeProfileResponse
     [JsonPropertyName("email")]
     public string Email { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Establishment lifecycle status as the enum token
+    /// (Draft/PendingReview/Approved/Rejected/Suspended). The public frontend
+    /// reads this top-level <c>status</c> to gate Approved-only screens (e.g.
+    /// employee management); it also lives nested under
+    /// <c>profile.general_info.establishment_status</c>.
+    /// </summary>
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
     [JsonPropertyName("profile_complete_percentage")]
     public int ProfileCompletePercentage { get; init; }
 
