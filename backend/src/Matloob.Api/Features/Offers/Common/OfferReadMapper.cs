@@ -89,6 +89,9 @@ internal static class OfferReadMapper
             && to < now
             && IsNonTerminal(offer.Status);
 
+        // Label + dot color the contract-list card renders straight from the API.
+        var (statusLabel, statusColor) = OfferStatusPresentation.ForStatus(offer.Status);
+
         // `evaluated` is viewer-specific: true once THIS viewer has posted their
         // side's Evaluation for the offer. The offer only reaches Completed once
         // BOTH sides post (see UserEvaluationEndpoints.MaybeMarkCompleted), so on a
@@ -142,8 +145,8 @@ internal static class OfferReadMapper
             NumberOfWorkingDays = offer.NumberOfWorkingDays,
             Currency = offer.Currency.ToString(),
             Status = offer.Status.ToWire(),
-            StatusColor = null,
-            StatusLabel = null,
+            StatusColor = statusColor,
+            StatusLabel = statusLabel,
             OfferValidityFrom = offer.OfferValidityFrom?.ToString("yyyy-MM-ddTHH:mm:sszzz"),
             OfferValidityTo = offer.OfferValidityTo?.ToString("yyyy-MM-ddTHH:mm:sszzz"),
             ExpiryDate = offer.OfferValidityTo?.ToString("yyyy-MM-ddTHH:mm:sszzz"),
