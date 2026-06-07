@@ -77,9 +77,11 @@ public sealed class LegacyBulkOpportunityCreateTests
         Assert.Equal(1, data.GetArrayLength());
         var first = data.EnumerateArray().First();
         Assert.Equal("Bulk legacy 1", first.GetProperty("name").GetString());
-        // No Ajeer/contract fields.
+        // No Ajeer contract object — but contracts_count (filled positions) is a
+        // real field, present and 0 for a freshly created opportunity.
         Assert.False(first.TryGetProperty("contract", out _));
-        Assert.False(first.TryGetProperty("contracts_count", out _));
+        Assert.True(first.TryGetProperty("contracts_count", out var contractsCount));
+        Assert.Equal(0, contractsCount.GetInt32());
     }
 
     [Fact]

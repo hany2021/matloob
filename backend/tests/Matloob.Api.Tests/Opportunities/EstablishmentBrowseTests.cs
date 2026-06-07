@@ -160,7 +160,9 @@ public sealed class EstablishmentBrowseTests
         var data = doc.RootElement.DataOf();
         Assert.Equal(oppId, data.GetProperty("id").GetGuid());
         Assert.True(data.TryGetProperty("opportunity_category", out _));
-        Assert.False(data.TryGetProperty("contracts_count", out _));
+        // contracts_count = filled positions (active offers); present and 0 here.
+        Assert.True(data.TryGetProperty("contracts_count", out var contractsCount));
+        Assert.Equal(0, contractsCount.GetInt32());
     }
 
     [Fact]
@@ -181,6 +183,33 @@ public sealed class EstablishmentBrowseTests
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
         Assert.Equal(ownOpp, doc.RootElement.DataOf().GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task Show_ContractsCount_ReflectsActiveOffers()
+    {
+        // contracts_count = filled positions = offers in the active set. One
+        // accepted offer on a 3-personnel vacancy → contracts_count == 1, so the
+        // card's "vacancies left" = 3 − 1 = 2.
+        await OaoHelpers.SeedLocalUserAsync(_factory, OaoHelpers.Worker.Sub);
+        var oppId = await OaoHelpers.SeedOpportunityAsync(
+            _factory, _publishingEstablishmentId, name: "Filled vacancy", forVacancy: true, requiredPersonnel: 3);
+        var appId = await OaoHelpers.SeedApplicationAsync(
+            _factory, oppId, applicantUserId: OaoHelpers.Worker.Sub);
+        await OaoHelpers.SeedOfferAsync(
+            _factory, _publishingEstablishmentId, oppId, appId,
+            sentByUserId: PublishingOwner.Sub, status: Matloob.Domain.Offers.OfferStatus.Accepted);
+
+        var client = _factory.CreateClientFor(OaoHelpers.EstablishmentOwner);
+        var response = await client.GetAsync(
+            $"/api/v1/establishments/{_applyingEstablishmentId}/browse/opportunities/{oppId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var doc = await JsonDocument.ParseAsync(stream);
+        var data = doc.RootElement.DataOf();
+        Assert.Equal(1, data.GetProperty("contracts_count").GetInt32());
+        Assert.Equal(3, data.GetProperty("required_personnel").GetInt32());
     }
 
     // -- categories --------------------------------------------------------

@@ -134,7 +134,8 @@ public sealed class ListEstablishmentBrowseOpportunitiesEndpoint
                 bundle.Uploads,
                 bundle.ApplicantsCount,
                 bundle.IsApplied,
-                bundle.Event));
+                bundle.Event,
+                contractsCount: bundle.ContractsCount));
         }
 
         await Send.OkAsync(responses, ct);

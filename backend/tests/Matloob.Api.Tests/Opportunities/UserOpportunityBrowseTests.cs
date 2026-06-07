@@ -105,8 +105,8 @@ public sealed class UserOpportunityBrowseTests
         Assert.True(first.TryGetProperty("applicants_count", out _));
         Assert.True(first.TryGetProperty("can_end", out _));
 
-        // No Ajeer / contract / invoice fields leaked through.
-        Assert.False(first.TryGetProperty("contracts_count", out _));
+        // contracts_count (filled positions) is a real field; no Ajeer fields leak.
+        Assert.True(first.TryGetProperty("contracts_count", out _));
         Assert.False(first.TryGetProperty("contract", out _));
         Assert.False(first.TryGetProperty("ajeer_contract_number", out _));
     }
