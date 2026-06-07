@@ -1,4 +1,5 @@
 using FastEndpoints;
+using Matloob.Api.Features.Establishments.Profile;
 using Matloob.Api.Features.Opportunities.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
@@ -85,6 +86,13 @@ public sealed class GetUserOpportunityEndpoint
             establishmentApplicantId: null,
             ct);
 
+        // The worker's opportunity-detail "issuer profile" page (apply/{id}/issuer)
+        // renders the FULL issuing-establishment profile, so emit it here. The
+        // browse list keeps the lightweight stub.
+        var issuerProfile = bundle.Issuer is null
+            ? null
+            : await EstablishmentProfileReadMapper.BuildAsync(_db, bundle.Issuer, ct);
+
         var response = OpportunityReadMapper.Map(
             opportunity,
             bundle.Category,
@@ -95,7 +103,8 @@ public sealed class GetUserOpportunityEndpoint
             bundle.ApplicantsCount,
             bundle.IsApplied,
             bundle.Event,
-            contractsCount: bundle.ContractsCount);
+            contractsCount: bundle.ContractsCount,
+            issuerOverride: issuerProfile);
 
         await Send.OkAsync(response, ct);
     }

@@ -65,6 +65,29 @@ public sealed class UserOpportunityBrowseTests
         Assert.Equal("Riyadh Season", ev.GetProperty("name").GetString());
     }
 
+    [Fact]
+    public async Task Single_IssuerIsFullEstablishmentProfile()
+    {
+        // The apply/{id}/issuer page renders the full issuing-establishment
+        // profile, so the worker's opportunity-detail must emit issuer.profile.*
+        // (general_info / contact_info / ...), not the id/name/email/logo stub.
+        var oppId = await OaoHelpers.SeedOpportunityAsync(
+            _factory, _establishmentId, name: "IssuerProfileOpp", forVacancy: true);
+
+        var client = _factory.CreateClientFor(OaoHelpers.Worker);
+        var response = await client.GetAsync($"/api/users/opportunities/{oppId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var issuer = doc.RootElement.DataOf().GetProperty("issuer");
+        Assert.Equal(JsonValueKind.Object, issuer.ValueKind);
+        Assert.Equal(_establishmentId, issuer.GetProperty("id").GetGuid());
+        Assert.True(issuer.TryGetProperty("profile", out var profile),
+            "issuer must carry the full establishment profile, not the stub");
+        Assert.True(profile.TryGetProperty("general_info", out _));
+        Assert.True(profile.TryGetProperty("contact_info", out _));
+    }
+
     // -- list ---------------------------------------------------------------
 
     [Fact]

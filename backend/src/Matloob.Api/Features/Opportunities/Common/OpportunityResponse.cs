@@ -161,8 +161,13 @@ public sealed class OpportunityResponse
     /// <c>EstablishmentResource</c> shape will land when the
     /// establishment composite read shape stabilises.
     /// </summary>
+    /// <summary>The opportunity's issuing establishment. The browse list emits a
+    /// lightweight <see cref="OpportunityIssuerDto"/> stub (id/name/email/logo),
+    /// while the worker's detail endpoint emits the full establishment profile
+    /// (same shape as <c>establishments/me/profile</c>) so the "issuer profile"
+    /// page can render general info / contact / bank / services / reviews.</summary>
     [JsonPropertyName("issuer")]
-    public OpportunityIssuerDto? Issuer { get; init; }
+    public object? Issuer { get; init; }
 
     [JsonPropertyName("success_criteria")]
     public IReadOnlyList<SuccessCriterionDto> SuccessCriteria { get; init; } = [];
