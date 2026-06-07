@@ -1,6 +1,7 @@
 using Matloob.Api.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Matloob.Api.Infrastructure.Identity.UserSync;
 
@@ -22,23 +23,37 @@ internal sealed class CurrentUserMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, ICurrentUser currentUser, AppDbContext db)
+    public async Task InvokeAsync(
+        HttpContext context,
+        ICurrentUser currentUser,
+        AppDbContext db,
+        ILogger<CurrentUserMiddleware> logger)
     {
         if (context.User?.Identity?.IsAuthenticated == true && currentUser.IsAuthenticated)
         {
             var sub = currentUser.UserId;
             if (!string.IsNullOrWhiteSpace(sub) && sub != "system")
             {
-                var localId = await db.Users
-                    .AsNoTracking()
-                    .IgnoreQueryFilters()
-                    .Where(u => u.IdentityId == sub)
-                    .Select(u => (Guid?)u.Id)
-                    .FirstOrDefaultAsync(context.RequestAborted);
-
-                if (localId is Guid id)
+                // Best-effort, exactly like the user-sync service: a DB hiccup
+                // must never turn an authenticated request into a 500. On failure
+                // we just leave MatloobUserId unset and continue.
+                try
                 {
-                    currentUser.SetMatloobUserId(id);
+                    var localId = await db.Users
+                        .AsNoTracking()
+                        .IgnoreQueryFilters()
+                        .Where(u => u.IdentityId == sub)
+                        .Select(u => (Guid?)u.Id)
+                        .FirstOrDefaultAsync(context.RequestAborted);
+
+                    if (localId is Guid id)
+                    {
+                        currentUser.SetMatloobUserId(id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Could not resolve the local user id for {Sub}", sub);
                 }
             }
         }
