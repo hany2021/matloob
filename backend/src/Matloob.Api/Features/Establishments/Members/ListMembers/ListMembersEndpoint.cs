@@ -89,6 +89,8 @@ public sealed class ListMembersEndpoint : EndpointWithoutRequest<ListMembersResp
             .Select(m => new MemberSummary(
                 m.Id,
                 m.UserId,
+                _db.Users.Where(u => u.IdentityId == m.UserId).Select(u => u.Name).FirstOrDefault(),
+                _db.Users.Where(u => u.IdentityId == m.UserId).Select(u => u.Email).FirstOrDefault(),
                 m.Role,
                 m.IsActive,
                 m.AddedAt,
@@ -106,6 +108,8 @@ public sealed record ListMembersResponse(
 public sealed record MemberSummary(
     Guid Id,
     string UserId,
+    string? Name,
+    string? Email,
     EstablishmentMemberRole Role,
     bool IsActive,
     DateTimeOffset AddedAt,
