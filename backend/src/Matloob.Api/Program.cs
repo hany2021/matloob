@@ -83,11 +83,25 @@ try
     builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.ISmsSender,
         Matloob.Api.Infrastructure.Notifications.NoOpSmsSender>();
 
-    // Outbound email port for establishment-employee invitations. No real
-    // provider yet (mirrors the SMS no-op above) — NoOpEmailSender logs the
+    // Outbound email port for establishment-employee invitations. When an
+    // EmailConfiguration (SMTP host + From) is supplied, send for real via
+    // SmtpEmailSender; otherwise fall back to NoOpEmailSender, which logs the
     // [INVITE] line so the link is recoverable from the API console in dev.
-    builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
-        Matloob.Api.Infrastructure.Notifications.NoOpEmailSender>();
+    builder.Services.Configure<Matloob.Api.Infrastructure.Notifications.EmailConfiguration>(
+        builder.Configuration.GetSection("EmailConfiguration"));
+    var emailConfig = builder.Configuration
+        .GetSection("EmailConfiguration")
+        .Get<Matloob.Api.Infrastructure.Notifications.EmailConfiguration>();
+    if (emailConfig?.IsConfigured == true)
+    {
+        builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
+            Matloob.Api.Infrastructure.Notifications.SmtpEmailSender>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
+            Matloob.Api.Infrastructure.Notifications.NoOpEmailSender>();
+    }
 
     // Outbox subscriber that turns offer events into notifications.
     builder.Services.AddScoped<Matloob.Api.Infrastructure.Events.Dispatcher.IOutboxHandler,
