@@ -175,6 +175,15 @@ public sealed class ProfileCompatibilityTests
         // New-client extensions.
         Assert.Equal("Manager", mine.GetProperty("role").GetString());
         Assert.Equal("Approved", mine.GetProperty("status").GetString());
+
+        // permissions[] matches the Manager role map (has events.manage, lacks
+        // the Owner-only members.manage and the Owner-only profile.edit).
+        var perms = mine.GetProperty("permissions").EnumerateArray()
+            .Select(p => p.GetString()).ToList();
+        Assert.Contains("events.manage", perms);
+        Assert.Contains("offers.send", perms);
+        Assert.DoesNotContain("members.manage", perms);
+        Assert.DoesNotContain("profile.edit", perms);
     }
 
     [Fact]

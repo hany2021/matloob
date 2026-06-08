@@ -66,7 +66,7 @@ public sealed class UpdateLogoEndpoint : Endpoint<UpdateLogoRequest, DataEnvelop
     public override async Task HandleAsync(UpdateLogoRequest req, CancellationToken ct)
     {
         var establishmentId = await EstablishmentResourceGuards
-            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
+            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, Infrastructure.Auth.Permissions.Profile.Edit, ct);
         if (establishmentId is null) return;
 
         var file = req.Logo;

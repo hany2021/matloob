@@ -293,7 +293,7 @@ public sealed class EstablishmentCancelOfferEndpoint : Endpoint<CancelOfferReque
     public override async Task HandleAsync(CancelOfferRequest req, CancellationToken ct)
     {
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Respond);
         if (establishmentId is null) return;
 
         var offer = await OfferLifecycleQueries.LoadEstablishmentSentOfferAsync(
@@ -364,7 +364,7 @@ public sealed class EstablishmentApproveCancellationEndpoint : EndpointWithoutRe
     public override async Task HandleAsync(CancellationToken ct)
     {
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Respond);
         if (establishmentId is null) return;
 
         var offerId = Route<Guid>("id");
@@ -435,7 +435,7 @@ public sealed class EstablishmentRejectCancellationEndpoint : EndpointWithoutReq
     public override async Task HandleAsync(CancellationToken ct)
     {
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Respond);
         if (establishmentId is null) return;
 
         var offerId = Route<Guid>("id");

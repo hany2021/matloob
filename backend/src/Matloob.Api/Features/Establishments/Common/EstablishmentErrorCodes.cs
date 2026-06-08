@@ -38,4 +38,18 @@ internal static class EstablishmentErrorCodes
     /// constraint when two requests race.
     /// </summary>
     public const string MemberAlreadyExists = "member_already_exists";
+
+    // ---- Invitation flow (invite-by-email) --------------------------------
+
+    /// <summary>A Pending invite already exists for this (establishment, email).</summary>
+    public const string InvitationAlreadyPending = "invitation_already_pending";
+
+    /// <summary>The email already belongs to an active member of the establishment.</summary>
+    public const string EmailAlreadyMember = "email_already_member";
+
+    /// <summary>The invite token was already accepted / revoked / expired (accept race lost).</summary>
+    public const string InvitationAlreadyUsed = "invitation_already_used";
+
+    /// <summary>Owner tried to invite at the Owner role (only the approval flow grants Owner).</summary>
+    public const string InvitationRoleNotAllowed = "invitation_role_not_allowed";
 }

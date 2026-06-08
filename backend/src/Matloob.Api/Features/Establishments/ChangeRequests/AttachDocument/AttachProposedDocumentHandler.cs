@@ -1,4 +1,5 @@
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Domain.Assets;
@@ -75,8 +76,8 @@ public sealed class AttachProposedDocumentHandler
 
         if (!isAdmin)
         {
-            var isOwner = await MembershipChecks.IsActiveOwnerAsync(
-                _db, establishmentId, _currentUser.UserId, ct);
+            var isOwner = await MembershipChecks.HasPermissionAsync(
+                _db, establishmentId, _currentUser.UserId, Infrastructure.Auth.Permissions.ChangeRequests.Submit, ct);
             if (!isOwner)
             {
                 return new Result(Outcome.Forbidden);

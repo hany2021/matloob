@@ -16,18 +16,18 @@ import { ConfirmDialogService } from './confirm-dialog.service';
   template: `
     <div class="backdrop" *ngIf="visible()" (click)="onBackdrop($event)">
       <div class="dialog" role="dialog" aria-modal="true">
-        <h2>{{ request()?.title ?? 'Are you sure?' }}</h2>
+        <h2>{{ request()?.title ?? 'هل أنت متأكد؟' }}</h2>
         <p *ngIf="request()?.message">{{ request()?.message }}</p>
         <div class="actions">
           <button type="button" class="btn-ghost" (click)="cancel()">
-            {{ request()?.cancelLabel ?? 'Cancel' }}
+            {{ request()?.cancelLabel ?? 'إلغاء' }}
           </button>
           <button
             type="button"
             [class]="confirmButtonClass()"
             (click)="confirm()"
           >
-            {{ request()?.confirmLabel ?? 'Confirm' }}
+            {{ request()?.confirmLabel ?? 'تأكيد' }}
           </button>
         </div>
       </div>

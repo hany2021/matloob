@@ -1,3 +1,4 @@
+using Matloob.Domain.Admins;
 using Matloob.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -15,6 +16,16 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("users");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).ValueGeneratedNever();
+
+        // TPH: admins + users share this table, split by user_type.
+        // Base User => "User"; back-office Admin => "Admin". Existing rows
+        // default to "User" when the column is added.
+        builder.HasDiscriminator<string>("user_type")
+            .HasValue<User>("User")
+            .HasValue<Admin>("Admin");
+        // Default ensures existing rows backfill to "User" when the column is
+        // added (EF still writes the discriminator explicitly on insert).
+        builder.Property<string>("user_type").HasMaxLength(20).HasDefaultValue("User");
 
         builder.Property(x => x.IdentityId).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Email).HasMaxLength(320);

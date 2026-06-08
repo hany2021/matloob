@@ -6,8 +6,8 @@ import { Component } from '@angular/core';
   template: `
     <div class="logout-page">
       <div class="card">
-        <p>You have been signed out.</p>
-        <p><a routerLink="/auth/login">Sign in again</a></p>
+        <p>تم تسجيل خروجك.</p>
+        <p><a routerLink="/auth/login">تسجيل الدخول مجدداً</a></p>
       </div>
     </div>
   `,

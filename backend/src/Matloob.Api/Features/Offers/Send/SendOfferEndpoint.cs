@@ -87,7 +87,7 @@ public sealed class SendOfferEndpoint
 
         var sub = _currentUser.UserId;
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(
-            _db, HttpContext, sub, ct);
+            _db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Send);
         if (establishmentId is null) return;
 
         var application = await _db.OpportunityApplications

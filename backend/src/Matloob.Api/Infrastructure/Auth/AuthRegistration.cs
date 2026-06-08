@@ -26,7 +26,10 @@ public static class AuthRegistration
         // (EF design-time, Quartz jobs, container init) HttpContext is null
         // and JwtCurrentUser falls back to "system" — exactly what audit needs.
         services.AddHttpContextAccessor();
-        services.AddSingleton<ICurrentUser, JwtCurrentUser>();
+        // Scoped (not singleton): so it can resolve per-request scoped services
+        // (e.g. the AppDbContext) when mapping the JWT sub to the local Matloob
+        // user. Consumers that capture it (the audit interceptors) are scoped too.
+        services.AddScoped<ICurrentUser, JwtCurrentUser>();
 
         // Local user sync: on every authenticated request, create-or-
         // update the row in the local `users` table keyed by IdM sub.
@@ -127,6 +130,10 @@ public static class AuthRegistration
                 {
                     policy.RequireClaim("aud", identity.AdminAudience);
                 }
+
+                // A deactivated (is_active=false) or soft-deleted admin loses
+                // access even with a valid matloob_admin token (legacy canAccessPanel).
+                policy.Requirements.Add(new ActiveAdminRequirement());
             });
 
             // (The earlier "matloob.establishment-context" policy was removed
@@ -134,6 +141,10 @@ public static class AuthRegistration
             // resolve context from the URL id + MembershipChecks rather
             // than an X-Commissioner-UUID header.)
         });
+
+        // Backs ActiveAdminRequirement on the Admin policy. Scoped so it can
+        // read the request's AppDbContext to check the caller's is_active flag.
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, ActiveAdminHandler>();
 
         return services;
     }

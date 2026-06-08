@@ -1,5 +1,6 @@
 using FastEndpoints;
 using Matloob.Api.Features.Establishments.Common;
+using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
 using Matloob.Api.Infrastructure.Identity;
 using Matloob.Api.Infrastructure.Persistence;
@@ -95,8 +96,8 @@ public sealed class CancelChangeRequestEndpoint : EndpointWithoutRequest
         bool isAllowed = isAdmin || isSubmitter;
         if (!isAllowed)
         {
-            isAllowed = await MembershipChecks.IsActiveOwnerAsync(
-                _db, establishmentId, sub, ct);
+            isAllowed = await MembershipChecks.HasPermissionAsync(
+                _db, establishmentId, sub, Infrastructure.Auth.Permissions.ChangeRequests.Submit, ct);
         }
         if (!isAllowed)
         {

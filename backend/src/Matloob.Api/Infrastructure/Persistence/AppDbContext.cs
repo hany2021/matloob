@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Matloob.Domain.Admins;
 using Matloob.Domain.Applications;
 using Matloob.Domain.Assets;
 using Matloob.Domain.Auditing;
@@ -29,6 +30,9 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
+    // Back-office admin users (local mirror of IdM admin identities)
+    public DbSet<Admin> Admins => Set<Admin>();
+
     // Reference / lookup data
     public DbSet<City> Cities => Set<City>();
     public DbSet<Region> Regions => Set<Region>();
@@ -57,6 +61,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<Establishment> Establishments => Set<Establishment>();
     public DbSet<EstablishmentDocument> EstablishmentDocuments => Set<EstablishmentDocument>();
     public DbSet<EstablishmentMember> EstablishmentMembers => Set<EstablishmentMember>();
+    public DbSet<EstablishmentInvitation> EstablishmentInvitations => Set<EstablishmentInvitation>();
     public DbSet<EstablishmentChangeRequest> EstablishmentChangeRequests => Set<EstablishmentChangeRequest>();
 
     // Establishment profile children: services + products offered.
@@ -126,7 +131,11 @@ public sealed class AppDbContext : DbContext
         // Bypass with .IgnoreQueryFilters() when restoring or admin-listing.
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (typeof(ISoftDeletable).IsAssignableFrom(entityType.ClrType))
+            // Query filters can only be set on the root of an inheritance
+            // hierarchy (TPH); skip derived types (e.g. Admin : User) — the
+            // filter on the root (User) already covers them.
+            if (entityType.BaseType == null
+                && typeof(ISoftDeletable).IsAssignableFrom(entityType.ClrType))
             {
                 var parameter = Expression.Parameter(entityType.ClrType, "e");
                 var prop = Expression.Property(parameter, nameof(ISoftDeletable.IsDeleted));

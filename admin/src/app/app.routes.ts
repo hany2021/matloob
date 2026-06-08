@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { adminGuard, authGuard } from './core/auth/auth.guard';
+import { adminGuard } from './core/auth/auth.guard';
 
 export const routes: Routes = [
   {
@@ -18,8 +18,18 @@ export const routes: Routes = [
       import('./auth/logout.component').then((m) => m.LogoutComponent),
   },
   {
+    // Standalone (outside the admin shell): shown to authenticated users who
+    // lack the matloob_admin role. Kept guard-free so adminGuard can redirect
+    // here without re-triggering itself.
+    path: 'auth/forbidden',
+    loadComponent: () =>
+      import('./auth/forbidden.component').then((m) => m.ForbiddenComponent),
+  },
+  {
+    // The entire admin panel is matloob_admin-only: adminGuard protects the
+    // shell, so every child route (dashboard included) requires the role.
     path: '',
-    canActivate: [authGuard],
+    canActivate: [adminGuard],
     loadComponent: () =>
       import('./layout/admin-shell/admin-shell.component').then(
         (m) => m.AdminShellComponent,
@@ -33,27 +43,12 @@ export const routes: Routes = [
             (m) => m.DashboardComponent,
           ),
       },
-      {
-        path: 'profile',
-        loadComponent: () =>
-          import('./features/profile/profile.component').then(
-            (m) => m.ProfileComponent,
-          ),
-      },
-      {
-        path: 'establishments',
-        loadComponent: () =>
-          import(
-            './features/establishments/establishment-list.component'
-          ).then((m) => m.EstablishmentListComponent),
-      },
-      {
-        path: 'establishments/:id',
-        loadComponent: () =>
-          import(
-            './features/establishments/establishment-detail.component'
-          ).then((m) => m.EstablishmentDetailComponent),
-      },
+      // NOTE: This is an ADMIN-ONLY panel (mirrors the legacy Filament admin's
+      // administrative scope). The establishment/operator + individual surfaces
+      // — profile, establishments (list/detail/members), opportunities, offers,
+      // evaluations, applicants — are intentionally UNROUTED. Their components
+      // remain on disk under ./features/* but are not reachable here; the
+      // catch-all below redirects any stale deep-link back to the dashboard.
       {
         path: 'admin/review-queue',
         canActivate: [adminGuard],
@@ -79,73 +74,71 @@ export const routes: Routes = [
           ).then((m) => m.ChangeRequestQueueComponent),
       },
       {
-        path: 'opportunities',
+        path: 'admin/admins',
+        canActivate: [adminGuard],
         loadComponent: () =>
-          import('./features/opportunities/opportunity-list.component').then(
-            (m) => m.OpportunityListComponent,
+          import('./features/admin-users/admin-user-list.component').then(
+            (m) => m.AdminUserListComponent,
           ),
       },
       {
-        path: 'opportunities/new',
+        path: 'admin/admins/new',
+        canActivate: [adminGuard],
         loadComponent: () =>
-          import('./features/opportunities/opportunity-form.component').then(
-            (m) => m.OpportunityFormComponent,
+          import('./features/admin-users/admin-user-create.component').then(
+            (m) => m.AdminUserCreateComponent,
           ),
       },
       {
-        path: 'opportunities/:id',
+        path: 'admin/admins/:id',
+        canActivate: [adminGuard],
         loadComponent: () =>
-          import('./features/opportunities/opportunity-detail.component').then(
-            (m) => m.OpportunityDetailComponent,
+          import('./features/admin-users/admin-user-detail.component').then(
+            (m) => m.AdminUserDetailComponent,
           ),
       },
       {
-        path: 'opportunities/:id/edit',
+        path: 'admin/individuals',
+        canActivate: [adminGuard],
         loadComponent: () =>
-          import('./features/opportunities/opportunity-form.component').then(
-            (m) => m.OpportunityFormComponent,
+          import('./features/individuals/individuals-list.component').then(
+            (m) => m.IndividualsListComponent,
           ),
       },
       {
-        path: 'opportunities/:id/applicants',
+        path: 'admin/organizers',
+        canActivate: [adminGuard],
+        data: {
+          role: 'organizer',
+          title: 'المنظمون',
+          subtitle: 'المنشآت التي يمكنها إنشاء وإدارة الفعاليات.',
+          emptyHeading: 'لا يوجد منظمون',
+        },
         loadComponent: () =>
-          import('./features/applications/applicant-list.component').then(
-            (m) => m.ApplicantListComponent,
+          import('./features/establishments-list/establishments-list.component').then(
+            (m) => m.EstablishmentsListComponent,
           ),
       },
       {
-        path: 'applicants/:applicantId',
+        path: 'admin/operators',
+        canActivate: [adminGuard],
+        data: {
+          role: 'operator',
+          title: 'المشغلون',
+          subtitle: 'المنشآت المشغّلة (الدور الافتراضي لكل منشأة).',
+          emptyHeading: 'لا يوجد مشغلون',
+        },
         loadComponent: () =>
-          import('./features/applications/applicant-detail.component').then(
-            (m) => m.ApplicantDetailComponent,
+          import('./features/establishments-list/establishments-list.component').then(
+            (m) => m.EstablishmentsListComponent,
           ),
       },
       {
-        path: 'offers',
+        path: 'admin/contracts',
+        canActivate: [adminGuard],
         loadComponent: () =>
-          import('./features/offers/offer-list.component').then(
-            (m) => m.OfferListComponent,
-          ),
-      },
-      {
-        path: 'offers/:id',
-        loadComponent: () =>
-          import('./features/offers/offer-detail.component').then(
-            (m) => m.OfferDetailComponent,
-          ),
-      },
-      {
-        path: 'evaluations',
-        loadComponent: () =>
-          import('./features/evaluations/evaluation-list.component').then(
-            (m) => m.EvaluationListComponent,
-          ),
-      },
-      {
-        path: 'evaluations/new',
-        loadComponent: () =>
-          import('./features/evaluations/evaluation-form.component').then(
-            (m) => m.EvaluationFormComponent,
+          import('./features/contracts/contracts-list.component').then(
+            (m) => m.ContractsListComponent,
           ),
       },
     ],

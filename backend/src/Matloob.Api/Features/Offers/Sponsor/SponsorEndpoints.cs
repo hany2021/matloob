@@ -103,7 +103,7 @@ public sealed class SponsorAcceptOfferEndpoint : EndpointWithoutRequest<OfferRes
     public override async Task HandleAsync(CancellationToken ct)
     {
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Respond);
         if (establishmentId is null) return;
 
         var offerId = Route<Guid>("id");
@@ -164,7 +164,7 @@ public sealed class SponsorRejectOfferEndpoint
     public override async Task HandleAsync(RejectionRequest req, CancellationToken ct)
     {
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Offers.Respond);
         if (establishmentId is null) return;
 
         var offerId = Route<Guid>("id");

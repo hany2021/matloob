@@ -184,7 +184,7 @@ public sealed class CreateEstablishmentEvaluationEndpoint
         }
 
         var sub = _currentUser.UserId;
-        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct);
+        var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(_db, HttpContext, sub, ct, Infrastructure.Auth.Permissions.Evaluations.Create);
         if (establishmentId is null) return;
 
         var offer = await _db.Offers

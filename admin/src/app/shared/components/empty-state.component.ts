@@ -27,6 +27,6 @@ import { Component, Input } from '@angular/core';
   ],
 })
 export class EmptyStateComponent {
-  @Input() heading = 'Nothing to show yet';
+  @Input() heading = 'لا يوجد شيء لعرضه بعد';
   @Input() message?: string;
 }

@@ -127,7 +127,7 @@ public sealed class CreateOpportunityEndpoint
     public override async Task HandleAsync(CancellationToken ct)
     {
         var establishmentId = await OpportunityWriteGuards.AuthoriseMutationAsync(
-            _db, HttpContext, _currentUser.UserId, ct);
+            _db, HttpContext, _currentUser.UserId, ct, Infrastructure.Auth.Permissions.Opportunities.Manage);
         if (establishmentId is null) return;
 
         var now = _clock.GetUtcNow();

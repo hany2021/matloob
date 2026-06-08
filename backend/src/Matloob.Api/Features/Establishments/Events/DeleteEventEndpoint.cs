@@ -40,7 +40,7 @@ public sealed class DeleteEventEndpoint : EndpointWithoutRequest
     public override async Task HandleAsync(CancellationToken ct)
     {
         var establishmentId = await EstablishmentResourceGuards
-            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, ct);
+            .ResolveForWriteAsync(_db, HttpContext, _currentUser.UserId, Infrastructure.Auth.Permissions.Events.Manage, ct);
         if (establishmentId is null) return;
 
         var id = Route<Guid>("id");

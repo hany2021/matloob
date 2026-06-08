@@ -1005,6 +1005,119 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("establishment_experiences", (string)null);
                 });
 
+            modelBuilder.Entity("Matloob.Domain.Establishments.EstablishmentInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<string>("AcceptedByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("accepted_by_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset>("InvitedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invited_at");
+
+                    b.Property<string>("InvitedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("invited_by_user_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid?>("MaterializedMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("materialized_member_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_establishment_invitations");
+
+                    b.HasIndex("Email")
+                        .HasDatabaseName("ix_invitations_accepted_unmaterialized")
+                        .HasFilter("is_deleted = false AND status = 'Accepted' AND materialized_member_id IS NULL");
+
+                    b.HasIndex("EstablishmentId")
+                        .HasDatabaseName("ix_invitations_establishment")
+                        .HasFilter("is_deleted = false");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_invitations_token_hash")
+                        .HasFilter("is_deleted = false");
+
+                    b.HasIndex("EstablishmentId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("ux_invitations_one_pending_per_email_per_est")
+                        .HasFilter("is_deleted = false AND status = 'Pending'");
+
+                    b.ToTable("establishment_invitations", (string)null);
+                });
+
             modelBuilder.Entity("Matloob.Domain.Establishments.EstablishmentMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3648,6 +3761,14 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("years_of_experience");
 
+                    b.Property<string>("user_type")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("User")
+                        .HasColumnName("user_type");
+
                     b.HasKey("Id")
                         .HasName("pk_users");
 
@@ -3677,6 +3798,10 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_users_region_id");
 
                     b.ToTable("users", (string)null);
+
+                    b.HasDiscriminator<string>("user_type").HasValue("User");
+
+                    b.UseTphMappingStrategy();
                 });
 
             modelBuilder.Entity("Matloob.Domain.Users.UserCertificate", b =>
@@ -4101,6 +4226,13 @@ namespace Matloob.Api.Infrastructure.Persistence.Migrations
                         .HasFilter("is_deleted = false");
 
                     b.ToTable("user_skills", (string)null);
+                });
+
+            modelBuilder.Entity("Matloob.Domain.Admins.Admin", b =>
+                {
+                    b.HasBaseType("Matloob.Domain.Users.User");
+
+                    b.HasDiscriminator().HasValue("Admin");
                 });
 
             modelBuilder.Entity("Matloob.Domain.Applications.OpportunityApplication", b =>

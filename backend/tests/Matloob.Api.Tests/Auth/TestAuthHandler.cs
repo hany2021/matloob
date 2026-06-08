@@ -57,6 +57,11 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
             new("sub", user.Sub),
         };
 
+        if (!string.IsNullOrEmpty(user.Email))
+        {
+            claims.Add(new Claim("email", user.Email));
+        }
+
         foreach (var role in user.Roles ?? Array.Empty<string>())
         {
             claims.Add(new Claim("role", role));
@@ -82,4 +87,5 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
 public sealed record TestUser(
     string Sub,
     IReadOnlyList<string>? Roles = null,
-    IReadOnlyList<string>? Audiences = null);
+    IReadOnlyList<string>? Audiences = null,
+    string? Email = null);

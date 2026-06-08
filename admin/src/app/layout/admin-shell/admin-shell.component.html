@@ -1,53 +1,65 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="brand">
-      <strong>Matloob</strong>
-      <span class="muted">Admin</span>
+      <strong>مطلوب</strong>
+      <span class="muted">الإدارة</span>
     </div>
     <nav class="nav">
-      @for (item of visibleNav(); track item.path) {
-        <a
-          [routerLink]="item.path"
-          routerLinkActive="active"
-          class="nav-link"
-        >
-          <span class="icon">{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </a>
+      @for (item of visibleNav(); track item.label) {
+        @if (item.children) {
+          <button
+            type="button"
+            class="nav-link nav-group-toggle"
+            (click)="toggleGroup(item.label)"
+          >
+            <span class="icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+            <span class="chev">{{ isGroupOpen(item.label) ? '▾' : '◂' }}</span>
+          </button>
+          @if (isGroupOpen(item.label)) {
+            <div class="nav-children">
+              @for (child of item.children; track child.path) {
+                <a
+                  [routerLink]="child.path"
+                  routerLinkActive="active"
+                  class="nav-link nav-child"
+                >
+                  <span class="icon">{{ child.icon }}</span>
+                  <span>{{ child.label }}</span>
+                </a>
+              }
+            </div>
+          }
+        } @else {
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="active"
+            class="nav-link"
+          >
+            <span class="icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+        }
       }
     </nav>
   </aside>
 
   <div class="main">
     <header class="topbar">
-      <div class="spacer">
-        @if (profileService.establishments().length > 1) {
-          <label class="establishment-picker">
-            <span class="muted">Acting as</span>
-            <select
-              [value]="profileService.activeEstablishmentId() ?? ''"
-              (change)="onEstablishmentChange($event)"
-            >
-              @for (e of profileService.establishments(); track e.id) {
-                <option [value]="e.id">{{ e.name }}</option>
-              }
-            </select>
-          </label>
-        }
-      </div>
+      <div class="spacer"></div>
       <div class="user">
         @if (auth.userName(); as name) {
           <span>{{ name }}</span>
         } @else if (auth.userEmail(); as email) {
           <span>{{ email }}</span>
         } @else {
-          <span class="muted">Signed in</span>
+          <span class="muted">مسجّل الدخول</span>
         }
         @if (auth.isAdmin()) {
-          <span class="badge badge-info">admin</span>
+          <span class="badge badge-info">مشرف</span>
         }
         <button type="button" class="btn btn-ghost" (click)="logout()">
-          Sign out
+          تسجيل الخروج
         </button>
       </div>
     </header>

@@ -49,6 +49,11 @@ internal sealed class JwtCurrentUser : ICurrentUser
         }
     }
 
+    /// <summary>Local users.id, set per-request by CurrentUserMiddleware after sync.</summary>
+    public Guid? MatloobUserId { get; private set; }
+
+    public void SetMatloobUserId(Guid matloobUserId) => MatloobUserId = matloobUserId;
+
     public bool IsAuthenticated =>
         _httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated == true;
 }

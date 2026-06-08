@@ -103,6 +103,9 @@ public sealed class MeProfileCompatibilityTests
         Assert.Equal(id, data.GetProperty("id").GetGuid());
         Assert.False(string.IsNullOrEmpty(data.GetProperty("name").GetString()));
         Assert.False(string.IsNullOrEmpty(data.GetProperty("email").GetString()));
+        // Top-level lifecycle status (the public frontend gates Approved-only
+        // screens like employee management on this exact field).
+        Assert.Equal("Approved", data.GetProperty("status").GetString());
         // 5 sections × 20% (legacy EstablishmentSupport formula). This freshly
         // approved establishment only has general-info populated (city) — no
         // services/products, additional contact number, bank account, or
@@ -112,6 +115,15 @@ public sealed class MeProfileCompatibilityTests
         Assert.Equal(JsonValueKind.Null, data.GetProperty("rate").ValueKind);
         Assert.Equal(JsonValueKind.Null, data.GetProperty("total_reviews").ValueKind);
         Assert.False(data.GetProperty("can_manage_events").GetBoolean());
+
+        // New-client extensions: the caller's role + permission slugs. The
+        // member was added as Manager (see BuildApprovedEstablishmentWithMember).
+        Assert.Equal("Manager", data.GetProperty("active_role").GetString());
+        var activePerms = data.GetProperty("active_permissions").EnumerateArray()
+            .Select(p => p.GetString()).ToList();
+        Assert.Contains("events.manage", activePerms);
+        Assert.DoesNotContain("members.manage", activePerms);
+        Assert.DoesNotContain("profile.edit", activePerms);
 
         // Profile composite block.
         var profile = data.GetProperty("profile");

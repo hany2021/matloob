@@ -4,6 +4,7 @@ using FastEndpoints.Swagger;
 using Matloob.Api.Features.Common;
 using Matloob.Api.Infrastructure.Auth;
 using Matloob.Api.Infrastructure.Events;
+using Matloob.Api.Infrastructure.Identity.AdminApi;
 using Matloob.Api.Infrastructure.Persistence;
 using Matloob.Api.Infrastructure.Persistence.Seed;
 using Matloob.Api.Infrastructure.StatusSync;
@@ -82,9 +83,33 @@ try
     builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.ISmsSender,
         Matloob.Api.Infrastructure.Notifications.NoOpSmsSender>();
 
+    // Outbound email port for establishment-employee invitations. When an
+    // EmailConfiguration (SMTP host + From) is supplied, send for real via
+    // SmtpEmailSender; otherwise fall back to NoOpEmailSender, which logs the
+    // [INVITE] line so the link is recoverable from the API console in dev.
+    builder.Services.Configure<Matloob.Api.Infrastructure.Notifications.EmailConfiguration>(
+        builder.Configuration.GetSection("EmailConfiguration"));
+    var emailConfig = builder.Configuration
+        .GetSection("EmailConfiguration")
+        .Get<Matloob.Api.Infrastructure.Notifications.EmailConfiguration>();
+    if (emailConfig?.IsConfigured == true)
+    {
+        builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
+            Matloob.Api.Infrastructure.Notifications.SmtpEmailSender>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<Matloob.Api.Infrastructure.Notifications.IEmailSender,
+            Matloob.Api.Infrastructure.Notifications.NoOpEmailSender>();
+    }
+
     // Outbox subscriber that turns offer events into notifications.
     builder.Services.AddScoped<Matloob.Api.Infrastructure.Events.Dispatcher.IOutboxHandler,
         Matloob.Api.Features.Notifications.Fanout.NotificationOutboxHandler>();
+
+    // IdM admin management API client (admin-user create/manage). Disabled
+    // until Identity:AdminApi:BaseUrl/ApiKey are supplied per environment.
+    builder.Services.AddIdentityAdminApi(builder.Configuration);
 
     // Feature-slice handlers that orchestrate across multiple endpoints get
     // registered here. Inline handlers (most slices) need no entry.
@@ -241,6 +266,10 @@ try
     // Best-effort; never aborts the request (the service catches DB
     // failures internally + logs).
     app.UseMiddleware<Matloob.Api.Infrastructure.Identity.UserSync.CurrentUserSyncMiddleware>();
+
+    // Immediately after sync: stamp the resolved local users.id onto
+    // ICurrentUser.MatloobUserId for the rest of the request.
+    app.UseMiddleware<Matloob.Api.Infrastructure.Identity.UserSync.CurrentUserMiddleware>();
 
     // FastEndpoints wires routing + endpoint discovery from the assembly.
     // The custom ResponseSerializer applies the global { data } / { data, meta,

@@ -1,8 +1,17 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProfileService } from '../../core/services/profile.service';
+
+/** A sidebar entry: either a direct link (has `path`) or a group (has `children`). */
+interface NavItem {
+  path?: string;
+  label: string;
+  icon: string;
+  adminOnly?: boolean;
+  children?: NavItem[];
+}
 
 /**
  * Top-level shell for every authenticated admin page. Sidebar +
@@ -21,15 +30,32 @@ export class AdminShellComponent implements OnInit {
   protected readonly auth = inject(AuthService);
   protected readonly profileService = inject(ProfileService);
 
-  protected readonly nav = [
-    { path: '/dashboard', label: 'Dashboard', icon: '⌂' },
-    { path: '/profile', label: 'My profile', icon: '◔' },
-    { path: '/establishments', label: 'Establishments', icon: '◬' },
-    { path: '/admin/review-queue', label: 'Review queue', icon: '⚑', adminOnly: true },
-    { path: '/opportunities', label: 'Opportunities', icon: '◇' },
-    { path: '/offers', label: 'Offers', icon: '◈' },
-    { path: '/evaluations', label: 'Evaluations', icon: '✦' },
+  // Admin-only panel: matches the legacy Filament admin's administrative
+  // scope. The establishment/operator surfaces (profile, establishments,
+  // opportunities, offers, evaluations) are intentionally NOT navigable here
+  // — their components remain on disk but are unrouted (see app.routes.ts).
+  protected readonly nav: NavItem[] = [
+    { path: '/dashboard', label: 'لوحة التحكم', icon: '⌂' },
+    {
+      label: 'المنشآت',
+      icon: '◫',
+      adminOnly: true,
+      children: [
+        { path: '/admin/review-queue', label: 'طلبات المراجعة', icon: '⚑' },
+        { path: '/admin/change-requests', label: 'طلبات التعديل', icon: '⮂' },
+      ],
+    },
+    { path: '/admin/individuals', label: 'الأفراد', icon: '◑', adminOnly: true },
+    { path: '/admin/organizers', label: 'المنظمون', icon: '◭', adminOnly: true },
+    { path: '/admin/operators', label: 'المشغلون', icon: '◰', adminOnly: true },
+    { path: '/admin/contracts', label: 'العقود', icon: '▤', adminOnly: true },
+    { path: '/admin/admins', label: 'المستخدمون', icon: '◔', adminOnly: true },
   ];
+
+  /** Labels of the expanded nav groups. Groups start open so nothing hides. */
+  private readonly openGroups = signal<Set<string>>(
+    new Set(this.nav.filter((i) => i.children).map((i) => i.label)),
+  );
 
   ngOnInit(): void {
     if (!this.profileService.loaded()) {
@@ -42,17 +68,28 @@ export class AdminShellComponent implements OnInit {
     }
   }
 
-  protected visibleNav() {
+  protected visibleNav(): NavItem[] {
     return this.nav.filter((item) => !item.adminOnly || this.auth.isAdmin());
+  }
+
+  protected isGroupOpen(label: string): boolean {
+    return this.openGroups().has(label);
+  }
+
+  protected toggleGroup(label: string): void {
+    this.openGroups.update((set) => {
+      const next = new Set(set);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
   }
 
   protected logout() {
     this.auth.logout();
     this.profileService.clear();
-  }
-
-  protected onEstablishmentChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.profileService.setActiveEstablishment(value || null);
   }
 }

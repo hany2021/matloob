@@ -20,7 +20,7 @@ import { ToastService } from './toast.service';
             type="button"
             class="dismiss"
             (click)="toast.dismiss(t.id)"
-            aria-label="Dismiss"
+            aria-label="إغلاق"
           >
             ×
           </button>
@@ -32,7 +32,7 @@ import { ToastService } from './toast.service';
     `
       .toast-host {
         position: fixed;
-        right: var(--space-5);
+        inset-inline-end: var(--space-5);
         bottom: var(--space-5);
         display: flex;
         flex-direction: column;
@@ -65,16 +65,16 @@ import { ToastService } from './toast.service';
         cursor: pointer;
       }
       .toast-info {
-        border-left: 4px solid var(--color-info);
+        border-inline-start: 4px solid var(--color-info);
       }
       .toast-success {
-        border-left: 4px solid var(--color-success);
+        border-inline-start: 4px solid var(--color-success);
       }
       .toast-warning {
-        border-left: 4px solid var(--color-warning);
+        border-inline-start: 4px solid var(--color-warning);
       }
       .toast-error {
-        border-left: 4px solid var(--color-danger);
+        border-inline-start: 4px solid var(--color-danger);
       }
     `,
   ],

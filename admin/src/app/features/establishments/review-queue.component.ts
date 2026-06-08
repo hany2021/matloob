@@ -18,8 +18,8 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
   template: `
     <div class="page">
       <header class="page-header">
-        <h1>Review queue</h1>
-        <p class="muted">Establishments waiting on admin approval.</p>
+        <h1>طلبات المراجعة</h1>
+        <p class="muted">المنشآت بانتظار موافقة المشرف.</p>
       </header>
 
       <app-loading *ngIf="loading()" />
@@ -27,16 +27,16 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
       <ng-container *ngIf="!loading()">
         <app-empty-state
           *ngIf="!rows().length"
-          heading="No establishments awaiting review"
-          message="New submissions will appear here, oldest first."
+          heading="لا توجد منشآت بانتظار المراجعة"
+          message="ستظهر الطلبات الجديدة هنا، الأقدم أولاً."
         />
         <table class="table" *ngIf="rows().length">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>CR number</th>
-              <th>City</th>
-              <th>Submitted</th>
+              <th>الاسم</th>
+              <th>رقم السجل التجاري</th>
+              <th>المدينة</th>
+              <th>تاريخ التقديم</th>
               <th></th>
             </tr>
           </thead>
@@ -47,13 +47,13 @@ import { EmptyStateComponent } from '../../shared/components/empty-state.compone
               <td>{{ r.city }}</td>
               <td>{{ r.submittedAt | date: 'medium' }}</td>
               <td>
-                <a class="btn btn-ghost" [routerLink]="['/admin/review-queue', r.id]">Review</a>
+                <a class="btn btn-ghost" [routerLink]="['/admin/review-queue', r.id]">مراجعة</a>
               </td>
             </tr>
           </tbody>
         </table>
         <div class="muted" *ngIf="total() > pageSize()">
-          {{ rows().length }} of {{ total() }} shown.
+          عرض {{ rows().length }} من {{ total() }}.
         </div>
       </ng-container>
     </div>

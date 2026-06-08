@@ -24,5 +24,5 @@ import { Component, Input } from '@angular/core';
   ],
 })
 export class LoadingComponent {
-  @Input() label = 'Loading…';
+  @Input() label = 'جارٍ التحميل…';
 }
