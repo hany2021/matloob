@@ -97,6 +97,50 @@ export const routes: Routes = [
             (m) => m.AdminUserDetailComponent,
           ),
       },
+      {
+        path: 'admin/individuals',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/individuals/individuals-list.component').then(
+            (m) => m.IndividualsListComponent,
+          ),
+      },
+      {
+        path: 'admin/organizers',
+        canActivate: [adminGuard],
+        data: {
+          role: 'organizer',
+          title: 'المنظمون',
+          subtitle: 'المنشآت التي يمكنها إنشاء وإدارة الفعاليات.',
+          emptyHeading: 'لا يوجد منظمون',
+        },
+        loadComponent: () =>
+          import('./features/establishments-list/establishments-list.component').then(
+            (m) => m.EstablishmentsListComponent,
+          ),
+      },
+      {
+        path: 'admin/operators',
+        canActivate: [adminGuard],
+        data: {
+          role: 'operator',
+          title: 'المشغلون',
+          subtitle: 'المنشآت المشغّلة (الدور الافتراضي لكل منشأة).',
+          emptyHeading: 'لا يوجد مشغلون',
+        },
+        loadComponent: () =>
+          import('./features/establishments-list/establishments-list.component').then(
+            (m) => m.EstablishmentsListComponent,
+          ),
+      },
+      {
+        path: 'admin/contracts',
+        canActivate: [adminGuard],
+        loadComponent: () =>
+          import('./features/contracts/contracts-list.component').then(
+            (m) => m.ContractsListComponent,
+          ),
+      },
     ],
   },
   { path: '**', redirectTo: '' },

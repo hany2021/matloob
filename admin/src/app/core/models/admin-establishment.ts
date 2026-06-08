@@ -135,3 +135,29 @@ export interface UpdateMemberRequest {
   role?: 'Owner' | 'Manager' | 'Other' | null;
   isActive?: boolean | null;
 }
+
+// --- Admin establishments list (organizers / operators screens) -------------
+
+export interface AdminEstablishmentListItem {
+  id: string;
+  name: string;
+  city: string | null;
+  economicActivity: string | null;
+  crNumber: string;
+  crExpiry: string | null;
+  canManageEvents: boolean;
+  status: string;
+  opportunitiesCount: number;
+  contractsCount: number;
+  createdAt: string;
+}
+
+export interface ListAdminEstablishmentsResponse {
+  page: number;
+  pageSize: number;
+  total: number;
+  items: AdminEstablishmentListItem[];
+}
+
+/** organizer = can_manage_events; operator = the rest. */
+export type EstablishmentRoleFilter = 'organizer' | 'operator';

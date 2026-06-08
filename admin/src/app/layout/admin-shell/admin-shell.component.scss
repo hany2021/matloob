@@ -59,6 +59,31 @@
   text-align: center;
 }
 
+/* Group toggle is a <button> styled like a nav-link. */
+.nav-group-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: inherit;
+}
+.nav-group-toggle .chev {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: #6c7997;
+}
+
+.nav-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-child {
+  padding-inline-start: var(--space-5);
+  font-size: 13px;
+}
+
 .main {
   display: flex;
   flex-direction: column;

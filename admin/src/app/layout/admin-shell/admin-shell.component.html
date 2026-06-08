@@ -5,15 +5,41 @@
       <span class="muted">الإدارة</span>
     </div>
     <nav class="nav">
-      @for (item of visibleNav(); track item.path) {
-        <a
-          [routerLink]="item.path"
-          routerLinkActive="active"
-          class="nav-link"
-        >
-          <span class="icon">{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </a>
+      @for (item of visibleNav(); track item.label) {
+        @if (item.children) {
+          <button
+            type="button"
+            class="nav-link nav-group-toggle"
+            (click)="toggleGroup(item.label)"
+          >
+            <span class="icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+            <span class="chev">{{ isGroupOpen(item.label) ? '▾' : '◂' }}</span>
+          </button>
+          @if (isGroupOpen(item.label)) {
+            <div class="nav-children">
+              @for (child of item.children; track child.path) {
+                <a
+                  [routerLink]="child.path"
+                  routerLinkActive="active"
+                  class="nav-link nav-child"
+                >
+                  <span class="icon">{{ child.icon }}</span>
+                  <span>{{ child.label }}</span>
+                </a>
+              }
+            </div>
+          }
+        } @else {
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="active"
+            class="nav-link"
+          >
+            <span class="icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+        }
       }
     </nav>
   </aside>
