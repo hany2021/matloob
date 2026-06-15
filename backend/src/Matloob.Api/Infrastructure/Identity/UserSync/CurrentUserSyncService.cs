@@ -62,12 +62,17 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
         var principal = _httpContextAccessor.HttpContext?.User;
         var email = principal?.FindFirst(ClaimTypes.Email)?.Value
                  ?? principal?.FindFirst("email")?.Value;
-        var name = principal?.FindFirst("name")?.Value
+        var name = principal?.FindFirst("given_name")?.Value
+                ?? principal?.FindFirst(ClaimTypes.GivenName)?.Value
+                ?? principal?.FindFirst("name")?.Value
                 ?? principal?.FindFirst(ClaimTypes.Name)?.Value
                 ?? principal?.FindFirst("preferred_username")?.Value;
         var phone = principal?.FindFirst("phone_number")?.Value
                  ?? principal?.FindFirst(ClaimTypes.MobilePhone)?.Value
                  ?? principal?.FindFirst(ClaimTypes.HomePhone)?.Value;
+        var dateOfBirth = ParseBirthdate(
+            principal?.FindFirst("birthdate")?.Value
+            ?? principal?.FindFirst(ClaimTypes.DateOfBirth)?.Value);
 
         var now = _clock.GetUtcNow();
 
@@ -85,6 +90,10 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
                     name: name,
                     phone: phone,
                     firstSeenAt: now);
+                if (dateOfBirth is not null)
+                {
+                    fresh.SetIdentityAttributes(null, null, CalculateAge(dateOfBirth.Value, now), dateOfBirth, null);
+                }
                 _db.Users.Add(fresh);
                 await _db.SaveChangesAsync(ct);
                 await MaterializeAcceptedInvitationsAsync(sub, email, now, ct);
@@ -92,6 +101,10 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
             }
 
             existing.SyncFromIdentity(email, name, phone, now);
+            if (dateOfBirth is not null)
+            {
+                existing.SetIdentityAttributes(null, null, CalculateAge(dateOfBirth.Value, now), dateOfBirth, null);
+            }
             await _db.SaveChangesAsync(ct);
             await MaterializeAcceptedInvitationsAsync(sub, email, now, ct);
             return existing;
@@ -105,6 +118,35 @@ internal sealed class CurrentUserSyncService : ICurrentUserSyncService
                 sub);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Parse the OIDC <c>birthdate</c> claim. Per OIDC Core §5.1 it is a string
+    /// in one of three shapes: <c>YYYY-MM-DD</c>, <c>YYYY</c> (year only), or
+    /// <c>0000-MM-DD</c> (year hidden). Any other shape (localized format,
+    /// Hijri, empty) returns null rather than throwing — sync is best-effort
+    /// and an unparseable claim must not break the request.
+    /// </summary>
+    private static DateOnly? ParseBirthdate(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", out var iso) && iso.Year >= 1) return iso;
+        if (DateOnly.TryParseExact(raw, "yyyy", out var yearOnly)) return yearOnly;
+        return null;
+    }
+
+    /// <summary>
+    /// Whole-years age as of <paramref name="asOf"/>, adjusted so the user
+    /// hasn't "turned" the new age until their birthday has passed this year.
+    /// Returns null for a future birthdate (clock skew / bad data).
+    /// </summary>
+    private static int? CalculateAge(DateOnly dateOfBirth, DateTimeOffset asOf)
+    {
+        var today = DateOnly.FromDateTime(asOf.UtcDateTime);
+        if (dateOfBirth > today) return null;
+        var age = today.Year - dateOfBirth.Year;
+        if (dateOfBirth > today.AddYears(-age)) age--;
+        return age;
     }
 
     /// <summary>
